@@ -1,11 +1,11 @@
 import { Transform, Type } from 'class-transformer';
 import {
-  ArrayMaxSize, ArrayMinSize, IsArray, IsDefined, IsIn, IsInt, IsNumber, IsObject,
-  IsString, IsUUID, Length, Matches, Max, Min, ValidateNested,
+  ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDefined, IsIn, IsInt, IsNumber, IsObject,
+  IsString, IsUUID, Length, Matches, Max, Min, ValidateIf, ValidateNested,
 } from 'class-validator';
 import {
-  DAYLIGHTS, DIMENSION_BOUNDS, FINISHES, FURNITURE, HEX_COLOR, LIGHTS, LIMITS, OPENINGS, WALLS,
-  type Daylight, type Finish, type FurnitureKind, type LightKind, type OpeningKind, type Project, type Wall,
+  DAYLIGHTS, DIMENSION_BOUNDS, FINISHES, FURNITURE, HEX_COLOR, LIGHTS, LIGHT_MOUNTS, LIMITS, MAX_LIGHT_LUMENS, OPENINGS, WALLS,
+  type Daylight, type Finish, type FurnitureKind, type LightKind, type LightMount, type OpeningKind, type Project, type Wall,
 } from '../../../../packages/studio/model';
 
 const idPattern = /^[a-zA-Z0-9_-]{1,64}$/;
@@ -52,12 +52,15 @@ class LightDto {
   @Matches(idPattern) id!: string;
   @IsIn(LIGHTS) kind!: LightKind;
   @number() @Min(-9) @Max(9) x!: number;
-  @number() @Min(0.25) @Max(6) y!: number;
+  @number() @Min(0) @Max(6) y!: number;
   @number() @Min(-9) @Max(9) z!: number;
   @number() @Min(0) @Max(100) brightness!: number;
   @number() @Min(2300) @Max(7500) warmth!: number;
   @number() @Min(0) @Max(360) direction!: number;
   @number() @Min(0) @Max(75) tilt!: number;
+  @ValidateIf((_light, value) => value !== undefined) @IsIn(LIGHT_MOUNTS) mount?: LightMount;
+  @ValidateIf((_light, value) => value !== undefined) @IsInt() @Min(0) @Max(MAX_LIGHT_LUMENS) lumens?: number;
+  @ValidateIf((_light, value) => value !== undefined) @IsBoolean() enabled?: boolean;
 }
 
 class PaintOptionDto {

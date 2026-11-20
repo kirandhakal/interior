@@ -1,7 +1,8 @@
 import {
-  Color, CylinderGeometry, DirectionalLight, Group, HemisphereLight, Mesh, MeshStandardMaterial, SpotLight, Vector3,
+  BoxGeometry, Color, CylinderGeometry, DirectionalLight, Group, HemisphereLight, Mesh, MeshStandardMaterial,
+  PointLight, SphereGeometry, SpotLight, Vector3, type BufferGeometry,
 } from 'three';
-import type { Daylight, Light } from '@studio/model';
+import { isPointFixture, isWallMount, type Daylight, type Light, type LightKind, type Wall } from '@studio/model';
 
 const conditions: Record<Daylight, { sun: string; sky: string; strength: number; ambient: number; direction: [number, number, number] }> = {
   Morning: { sun: '#fff0d5', sky: '#fff7e4', strength: 2.0, ambient: 1.42, direction: [-8, 5, 2] },
@@ -62,25 +63,107 @@ function kelvin(k: number) {
   return new Color(`rgb(${[red, green, blue].map(channel => Math.round(Math.min(255, Math.max(0, channel)))).join(',')})`);
 }
 
+const wallHeading: Record<Wall, number> = { north: 0, east: -Math.PI / 2, south: Math.PI, west: Math.PI / 2 };
+const vertical = new Vector3(0, 1, 0);
+const horizontal = new Vector3(1, 0, 0);
+const beamWidths: Partial<Record<LightKind, number>> = { Spotlight: 0.42, 'Wall sconce': 0.84, 'LED strip': 1.28 };
+
+function createHousing(kind: LightKind) {
+  const body = new Group();
+  const frame = new MeshStandardMaterial({ color: '#65645a', roughness: 0.44, metalness: 0.36 });
+  const shade = new MeshStandardMaterial({ color: '#d0baa1', roughness: 0.85 });
+  const diffuser = new MeshStandardMaterial({ color: '#f4eadd', roughness: 0.57 });
+  const add = (geometry: BufferGeometry, material: MeshStandardMaterial, y: number) => {
+    const mesh = new Mesh(geometry, material);
+    mesh.position.y = y;
+    mesh.receiveShadow = true;
+    body.add(mesh);
+  };
+  let sourceY = -0.14;
+  switch (kind) {
+    case 'Bulb':
+      add(new CylinderGeometry(0.055, 0.057, 0.085, 20), frame, -0.044);
+      add(new SphereGeometry(0.075, 24, 12), diffuser, -0.138);
+      sourceY = -0.17;
+      break;
+    case 'Floor lamp':
+      add(new CylinderGeometry(0.19, 0.22, 0.046, 24), frame, 0.023);
+      add(new CylinderGeometry(0.018, 0.024, 1.17, 14), frame, 0.62);
+      add(new CylinderGeometry(0.15, 0.23, 0.25, 28, 1, true), shade, 1.23);
+      add(new SphereGeometry(0.07, 20, 12), diffuser, 1.17);
+      sourceY = 1.14;
+      break;
+    case 'Wall sconce':
+      add(new BoxGeometry(0.18, 0.052, 0.27), frame, -0.027);
+      add(new CylinderGeometry(0.038, 0.038, 0.09, 16), frame, -0.085);
+      add(new BoxGeometry(0.22, 0.155, 0.22), shade, -0.178);
+      add(new BoxGeometry(0.179, 0.011, 0.179), diffuser, -0.26);
+      sourceY = -0.27;
+      break;
+    case 'Ceiling light':
+      add(new CylinderGeometry(0.205, 0.199, 0.045, 32), frame, -0.023);
+      add(new CylinderGeometry(0.186, 0.175, 0.063, 32), diffuser, -0.077);
+      sourceY = -0.12;
+      break;
+    case 'Spotlight':
+      add(new CylinderGeometry(0.086, 0.086, 0.044, 24), frame, -0.022);
+      add(new CylinderGeometry(0.064, 0.092, 0.12, 24), frame, -0.104);
+      add(new CylinderGeometry(0.075, 0.075, 0.014, 24), diffuser, -0.171);
+      sourceY = -0.19;
+      break;
+    case 'LED strip':
+      add(new BoxGeometry(0.84, 0.042, 0.085), frame, -0.021);
+      add(new BoxGeometry(0.79, 0.018, 0.055), diffuser, -0.05);
+      sourceY = -0.07;
+      break;
+  }
+  return {
+    body, diffuser, sourceY,
+    dispose() {
+      for (const mesh of body.children) (mesh as Mesh).geometry.dispose();
+      frame.dispose();
+      shade.dispose();
+      diffuser.dispose();
+    },
+  };
+}
+
 export function createFixture(light: Light) {
   const group = new Group();
-  group.userData.hit = { type: 'light', id: light.id };
-  const material = new MeshStandardMaterial({ color: '#eee8dd', roughness: 0.54 });
-  const lamp = new Mesh(new CylinderGeometry(0.082, 0.131, 0.082, 24), material);
-  group.add(lamp);
-  const spot = new SpotLight('#fff3dc', 10, 0, light.kind === 'Spotlight' ? 0.6 : 1.25, 0.65, 2);
-  group.add(spot.target, spot);
+  const model = new Group();
+  model.userData.hit = { type: 'light', id: light.id };
+  const housing = createHousing(light.kind);
+  model.add(housing.body);
+  const beam = isPointFixture(light.kind) ? new PointLight() : new SpotLight('#fff3dc', 0, 0, beamWidths[light.kind] ?? 1.17, 0.64);
+  group.add(model, beam);
+  if (beam instanceof SpotLight) group.add(beam.target);
+  const color = new Color();
+  const aim = new Vector3();
+
   const update = (value: Light) => {
+    const wall = isWallMount(value.mount) ? value.mount : undefined;
+    const heading = wall ? wallHeading[wall] : 0;
     group.position.set(value.x, value.y, value.z);
-    const heading = value.direction * (Math.PI / 180);
-    const tilt = value.tilt * (Math.PI / 180);
-    spot.target.position.set(Math.sin(heading) * Math.sin(tilt), -Math.cos(tilt), -Math.cos(heading) * Math.sin(tilt));
-    const color = kelvin(value.warmth);
-    spot.color.copy(color);
-    spot.intensity = value.brightness * 0.39;
-    material.emissive.copy(color);
-    material.emissiveIntensity = value.brightness / 130;
+    model.rotation.y = heading;
+    housing.body.rotation.x = wall ? -Math.PI / 2 : 0;
+    beam.position.set(0, housing.sourceY, 0).applyAxisAngle(horizontal, housing.body.rotation.x).applyAxisAngle(vertical, heading);
+
+    if (beam instanceof SpotLight) {
+      const azimuth = value.direction * Math.PI / 180;
+      const tilt = value.tilt * Math.PI / 180;
+      aim.set(Math.sin(azimuth) * Math.sin(tilt), -Math.cos(tilt), (wall ? 1 : -1) * Math.cos(azimuth) * Math.sin(tilt));
+      if (wall) aim.applyAxisAngle(vertical, heading);
+      beam.target.position.copy(beam.position).add(aim);
+    }
+    color.copy(kelvin(value.warmth));
+    beam.color.copy(color);
+    if (value.enabled === false) beam.intensity = 0;
+    else if (value.lumens !== undefined) beam.power = value.lumens;
+    else beam.intensity = value.brightness * 0.39;
+    housing.diffuser.emissive.copy(color);
+    housing.diffuser.emissiveIntensity = Math.min(1.6, Math.sqrt(beam.intensity) / 8);
   };
+
   update(light);
-  return { group, update, dispose: () => { lamp.geometry.dispose(); material.dispose(); spot.dispose(); } };
+  return { group, model, update, dispose: () => { housing.dispose(); beam.dispose(); } };
 }

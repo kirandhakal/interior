@@ -1,14 +1,16 @@
 'use client';
 
 import {
-  Armchair, DoorOpen, Lightbulb, Plus, Trash2, LampCeiling, RectangleVertical, type LucideIcon,
+  Armchair, DoorOpen, Lightbulb, Plus, RectangleVertical,
 } from 'lucide-react';
 import {
-  FURNITURE, LIGHTS, LIMITS, OPENINGS, WALL_LABELS, WALLS, clamp, fitFurniture, fitLight, fitOpening, furnitureBounds, furnitureFitsRoom,
-  openingFits, wallSpan, type Furniture, type Light, type Opening, type Room, type Wall,
+  FURNITURE, LIMITS, OPENINGS, WALL_LABELS, WALLS, fitFurniture, fitOpening, furnitureBounds, furnitureFitsRoom,
+  openingFits, wallSpan, type Furniture, type LightKind, type Opening, type Room, type Wall,
 } from '@studio/model';
-import { IconButton, NumberField, RangeField, SelectField } from '@/components/ui';
-import { addFurniture, addLight, addOpening } from './rooms';
+import { NumberField, RangeField, SelectField } from '@/components/ui';
+import { addFurniture, addOpening } from './rooms';
+import { LightingPanel } from './lighting/panel';
+import { ObjectList } from './object-list';
 import type { Hit } from './scene/room-scene';
 
 export type ObjectTab = 'Openings' | 'Lighting' | 'Furniture';
@@ -21,6 +23,7 @@ type ObjectPanelProps = {
   onSelect: (selection: Hit | null) => void;
   onChange: (room: Room, group?: string) => void;
   notify: (message: string) => void;
+  onAddFixture: (kind: LightKind) => void;
 };
 
 const tabs = {
@@ -28,24 +31,6 @@ const tabs = {
   Lighting: { icon: Lightbulb, heading: 'Room lighting', description: 'Position and tune your fixtures.' },
   Furniture: { icon: Armchair, heading: 'Furniture', description: 'Furnish and arrange your room.' },
 };
-
-type Editable = Opening | Furniture | Light;
-
-function ObjectList<T extends Editable>({ entries, selected, icon: Icon, onSelect, onRemove }: {
-  entries: T[]; selected?: string; icon: LucideIcon; onSelect: (item: T) => void; onRemove: (item: T) => void;
-}) {
-  if (entries.length === 0) return <p className="empty-inline">Nothing added yet.</p>;
-  return <ul className="object-list">
-    {entries.map((item, index) => <li key={item.id} data-active={selected === item.id}>
-      <button type="button" aria-pressed={selected === item.id} onClick={() => onSelect(item)}>
-        <Icon size={16} />
-        <span>{item.kind}{'wall' in item && <small>{WALL_LABELS[item.wall]}</small>}</span>
-        <span className="sr-only"> {index + 1}</span>
-      </button>
-      <IconButton label={`Remove ${item.kind.toLowerCase()} ${index + 1}`} onClick={() => onRemove(item)}><Trash2 size={15} /></IconButton>
-    </li>)}
-  </ul>;
-}
 
 export function ObjectPanel(props: ObjectPanelProps) {
   const { icon: Icon, heading, description } = tabs[props.tab];
@@ -55,7 +40,7 @@ export function ObjectPanel(props: ObjectPanelProps) {
       <div><h2>{heading}</h2><p>{description}</p></div>
     </div>
     {props.tab === 'Openings' ? <OpeningControls {...props} />
-      : props.tab === 'Lighting' ? <LightControls {...props} />
+      : props.tab === 'Lighting' ? <LightingPanel {...props} />
       : <FurnitureControls {...props} />}
   </div>;
 }
@@ -140,47 +125,6 @@ function FurnitureControls({ room, selection, onSelect, onChange, notify }: Obje
       </div>
       <RangeField label="Rotation" value={active.rotation} min={0} max={360} step={1} unit="°"
         onChange={rotation => update(active, { rotation }, active.id + ':rotation')} />
-    </section>}
-  </>;
-}
-
-function LightControls({ room, selection, onSelect, onChange }: ObjectPanelProps) {
-  const active = selection?.type === 'light' ? room.lights.find(item => item.id === selection.id) : undefined;
-  const update = (item: Light, changes: Partial<Light>, group?: string) => {
-    const next = fitLight(room.dimensions, { ...item, ...changes });
-    onChange({ ...room, lights: room.lights.map(value => value.id === item.id ? next : value) }, group);
-  };
-  return <>
-    <div className="two-fields object-catalog">
-      {LIGHTS.map(kind => <button type="button" className="button button-secondary" key={kind}
-        disabled={room.lights.length >= LIMITS.lights} onClick={() => {
-          const item = addLight(room, kind);
-          onChange({ ...room, lights: [...room.lights, item] });
-          onSelect({ type: 'light', id: item.id });
-        }}><Plus size={15} /> {kind}</button>)}
-    </div>
-    <ObjectList entries={room.lights} icon={LampCeiling} selected={active?.id}
-      onSelect={item => onSelect({ type: 'light', id: item.id })}
-      onRemove={item => {
-        onChange({ ...room, lights: room.lights.filter(value => value.id !== item.id) });
-        if (active?.id === item.id) onSelect(null);
-      }} />
-    {active && <section className="object-details" key={active.id}>
-      <h3>{active.kind} settings</h3>
-      <div className="three-fields">
-        <NumberField label="X position" value={active.x} onChange={x => update(active, { x })} />
-        <NumberField label="Z position" value={active.z} onChange={z => update(active, { z })} />
-        <NumberField label="Height" value={active.y} min={0.25} max={room.dimensions.height - 0.1}
-          onChange={y => update(active, { y: clamp(y, 0.25, room.dimensions.height - 0.1) })} />
-      </div>
-      <RangeField label="Brightness" value={active.brightness} min={0} max={100} step={1} unit="%"
-        onChange={brightness => update(active, { brightness }, active.id + ':brightness')} />
-      <RangeField label="Warmth" value={active.warmth} min={2300} max={7500} step={100} unit=" K"
-        onChange={warmth => update(active, { warmth }, active.id + ':warmth')} />
-      <RangeField label="Direction" value={active.direction} min={0} max={360} step={1} unit="°"
-        onChange={direction => update(active, { direction }, active.id + ':direction')} />
-      <RangeField label="Tilt" value={active.tilt} min={0} max={75} step={1} unit="°"
-        onChange={tilt => update(active, { tilt }, active.id + ':tilt')} />
     </section>}
   </>;
 }

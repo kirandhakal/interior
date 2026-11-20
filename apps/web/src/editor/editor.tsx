@@ -6,13 +6,14 @@ import {
   Plus, Redo2, Ruler, Save, Settings2, Sun, Sunrise, Sunset, Undo2, UserRound, X, type LucideIcon,
 } from 'lucide-react';
 import {
-  DAYLIGHTS, LIMITS, WALL_LABELS, type Account, type Daylight, type Project, type Room, type SavedProject, type Wall,
+  DAYLIGHTS, LIMITS, WALL_LABELS, type Account, type Daylight, type LightKind, type Project, type Room, type SavedProject, type Wall,
 } from '@studio/model';
 import { IconButton } from '@/components/ui';
 import { api, ApiError, errorMessage } from '@/projects/api';
 import { AuthDialog, ProjectDialog } from '@/projects/dialogs';
 import { readLocalProjects, saveLocalProject } from '@/projects/local';
 import { useProjectHistory } from './history';
+import { newFixture, type LightPlacement } from './lighting/fixtures';
 import { ObjectPanel, type ObjectTab } from './objects';
 import { CompareDialog } from './paint/compare';
 import { PaintPanel, colorStyle } from './paint/panel';
@@ -157,6 +158,16 @@ export function Editor() {
     }
   };
 
+  const addFixture = (kind: LightKind, placement?: LightPlacement) => {
+    if (room.lights.length >= LIMITS.lights) {
+      notify(`This room has reached its ${LIMITS.lights}-fixture limit.`, true);
+      return;
+    }
+    const light = newFixture(room, kind, wall, placement);
+    changeRoom({ ...room, lights: [...room.lights, light] });
+    sceneSelect({ type: 'light', id: light.id });
+  };
+
   async function save(copy = false) {
     if (savingRef.current) return;
     touched.current = true;
@@ -264,10 +275,15 @@ export function Editor() {
           </div>
         </header>
         <div className="scene-stage">
-          <Preview room={room} view={view} tool={tool} selection={selection} command={command} interactive onSelect={sceneSelect} onMove={changeRoom} />
+          <Preview room={room} view={view} tool={tool} selection={selection} command={command} interactive
+            dragFixtures={tab === 'Lighting'} onSelect={sceneSelect} onMove={changeRoom} onDropFixture={(kind, placement) => {
+              if (placement) addFixture(kind, placement);
+              else notify(kind === 'Wall sconce' ? 'Drop the sconce onto a visible wall in 3D view.' : 'Drop the fixture inside the room.', true);
+            }} />
           <SceneToolbar tool={tool} onTool={setTool} onCamera={action => setCommand({ action })} />
           {isWall && <span className="scene-selection"><span style={colorStyle(wallHex)} /> {WALL_LABELS[wall]}</span>}
-          <span className="scene-hint">{tool === 'Move' ? 'Drag an object to move it' : view === '3D' ? 'Drag to orbit · Scroll to zoom' : 'Scroll or pinch to zoom'}</span>
+          <span className="scene-hint">{tab === 'Lighting' ? 'Drag a fixture to move it' : tool === 'Move' ? 'Drag an object to move it'
+            : view === '3D' ? 'Drag to orbit · Scroll to zoom' : 'Scroll or pinch to zoom'}</span>
         </div>
         <div className="daylight-strip">
           <div className="daylight-label"><Sun size={18} /><span>Daylight</span></div>
@@ -286,7 +302,7 @@ export function Editor() {
       <aside className="inspector" aria-label={tab + ' options'}>
         <div className="inspector-content" key={tab + room.id}>
           {tab === 'Paint' ? <PaintPanel key={wall} room={room} wall={wall} onWall={selectWall} onChange={changeRoom} onCompare={() => setDialog('compare')} />
-            : <ObjectPanel tab={tab} room={room} wall={wall} selection={selection} onSelect={hit => {
+            : <ObjectPanel tab={tab} room={room} wall={wall} selection={selection} onAddFixture={addFixture} onSelect={hit => {
               if (hit?.type === 'wall') selectWall(hit.wall);
               else setSelection(hit);
             }} onChange={changeRoom} notify={message => notify(message, true)} />}

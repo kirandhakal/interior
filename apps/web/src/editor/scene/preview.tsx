@@ -2,8 +2,9 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Box, Hand, Maximize, Minus, MousePointer2, Plus, Scan } from 'lucide-react';
-import type { Room } from '@studio/model';
+import { LIGHTS, type LightKind, type Room } from '@studio/model';
 import { IconButton, Segmented } from '@/components/ui';
+import { FIXTURE_DRAG_TYPE, type LightPlacement } from '../lighting/fixtures';
 import { RoomScene, type CameraAction, type Hit, type Tool, type View } from './room-scene';
 
 const doNothing = () => {};
@@ -14,19 +15,22 @@ type PreviewProps = {
   tool?: Tool;
   selection?: Hit | null;
   interactive?: boolean;
+  dragFixtures?: boolean;
   command?: { action: CameraAction };
   onSelect?: (selection: Hit) => void;
   onMove?: (room: Room, dragStart: Room) => void;
+  onDropFixture?: (kind: LightKind, placement: LightPlacement | undefined) => void;
 };
 
 export function Preview({
-  room, view, tool = 'Select', selection = null, interactive = false, command,
-  onSelect = doNothing, onMove = doNothing,
+  room, view, tool = 'Select', selection = null, interactive = false, dragFixtures = false, command,
+  onSelect = doNothing, onMove = doNothing, onDropFixture,
 }: PreviewProps) {
   const host = useRef<HTMLDivElement>(null);
   const instance = useRef<RoomScene>(null);
   const [error, setError] = useState(false);
-  const current = { room, view, tool, selection, interactive, onSelect, onMove };
+  const [fixtureOver, setFixtureOver] = useState(false);
+  const current = { room, view, tool, selection, interactive, dragFixtures, onSelect, onMove };
   const latest = useRef(current);
 
   useLayoutEffect(() => {
@@ -49,7 +53,25 @@ export function Preview({
     if (command) instance.current?.act(command.action);
   }, [command]);
 
-  return <div className="scene-host" data-tool={tool} ref={host}>
+  return <div className="scene-host" data-tool={tool} data-fixture-over={fixtureOver} ref={host}
+    onDragOver={event => {
+      if (!onDropFixture || error || !event.dataTransfer.types.includes(FIXTURE_DRAG_TYPE)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+      setFixtureOver(true);
+    }}
+    onDragLeave={event => {
+      if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setFixtureOver(false);
+    }}
+    onDrop={event => {
+      setFixtureOver(false);
+      if (!onDropFixture || error) return;
+      const fixture = event.dataTransfer.getData(FIXTURE_DRAG_TYPE);
+      const kind = LIGHTS.find(item => item === fixture);
+      if (!kind) return;
+      event.preventDefault();
+      onDropFixture(kind, instance.current?.dropFixture(kind, event.clientX, event.clientY));
+    }}>
     {error && <div className="scene-error" role="status">
       <Box size={28} />
       <strong>3D preview unavailable</strong>

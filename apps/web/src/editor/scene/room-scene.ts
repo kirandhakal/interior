@@ -4,11 +4,12 @@ import {
 } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import {
-  WALLS, fitFurniture, fitLight, fitOpening, openingFits, type Room, type Wall,
+  WALLS, fitFurniture, fitLight, fitOpening, isWallMount, openingFits, type LightKind, type Room, type Wall,
 } from '@studio/model';
 import { createFloor, createWall, disposeGeometry, roughness, wallNormals } from './architecture';
 import { createAssets, createFurniture, type SceneAssets } from './furniture';
 import { createDaylight, createFixture } from './lighting';
+import { fixturePlacement } from './fixture-placement';
 
 type ObjectHit = { type: 'opening' | 'furniture' | 'light'; id: string };
 export type Hit = { type: 'wall'; wall: Wall } | ObjectHit;
@@ -22,6 +23,7 @@ type SceneState = {
   tool: Tool;
   selection: Hit | null;
   interactive: boolean;
+  dragFixtures: boolean;
   onSelect: (selection: Hit) => void;
   onMove: (room: Room, dragStart: Room) => void;
 };
@@ -57,7 +59,7 @@ export class RoomScene {
   private readonly ground = new Mesh(new PlaneGeometry(140, 140), new ShadowMaterial({ opacity: 0.17, depthWrite: false }));
   private readonly walls = new Map<Wall, ReturnType<typeof createWall>>();
   private readonly furniture = new Map<string, { group: Group; kind: string }>();
-  private readonly lights = new Map<string, ReturnType<typeof createFixture> & { kind: string }>();
+  private readonly lights = new Map<string, ReturnType<typeof createFixture> & { kind: LightKind }>();
   private floor?: ReturnType<typeof createFloor>;
   private previous?: SceneState;
   private state: SceneState;
@@ -294,10 +296,16 @@ export class RoomScene {
       else this.lightUntil = performance.now() + 450;
     }
     if (switchedRoom || state.view !== previous?.view || resized) this.setCamera(!previous);
-    else if (state.selection !== previous?.selection && !this.down && state.selection) {
+    else if (!this.down && state.selection) {
       const hit = state.selection;
-      const reveal = hit.type === 'wall' ? hit.wall : hit.type === 'opening' ? room.openings.find(o => o.id === hit.id)?.wall : undefined;
-      if (reveal) this.revealWall(reveal);
+      const mount = hit.type === 'light' ? room.lights.find(light => light.id === hit.id)?.mount : undefined;
+      const previousMount = hit.type === 'light' ? oldRoom?.lights.find(light => light.id === hit.id)?.mount : undefined;
+      if (state.selection !== previous?.selection || mount !== previousMount) {
+        const reveal = hit.type === 'wall' ? hit.wall
+          : hit.type === 'opening' ? room.openings.find(o => o.id === hit.id)?.wall
+          : isWallMount(mount) ? mount : undefined;
+        if (reveal) this.revealWall(reveal);
+      }
     }
     this.schedule();
   }
@@ -331,10 +339,14 @@ export class RoomScene {
       mesh.group.visible = shown;
       mesh.group.scale.y = height;
     }
+    for (const light of this.state.room.lights) {
+      const fixture = this.lights.get(light.id);
+      if (fixture) fixture.model.visible = !isWallMount(light.mount) || !!this.walls.get(light.mount)?.group.visible;
+    }
     const selected = this.state.selection;
     let object: Object3D | undefined;
     if (selected?.type === 'furniture') object = this.furniture.get(selected.id)?.group;
-    if (selected?.type === 'light') object = this.lights.get(selected.id)?.group.children[0];
+    if (selected?.type === 'light') object = this.lights.get(selected.id)?.model;
     if (selected?.type === 'opening') {
       const wall = this.state.room.openings.find(item => item.id === selected.id)?.wall;
       const group = wall && this.walls.get(wall)?.group;
@@ -351,7 +363,7 @@ export class RoomScene {
     if (moved || this.cameraUntil || this.lightUntil) this.schedule();
   };
 
-  private cast(event: PointerEvent) {
+  private cast(event: { clientX: number; clientY: number }) {
     const bounds = this.host.getBoundingClientRect();
     this.cursor.set((event.clientX - bounds.left) / bounds.width * 2 - 1, -(event.clientY - bounds.top) / bounds.height * 2 + 1);
     this.ray.setFromCamera(this.cursor, this.camera);
@@ -367,6 +379,23 @@ export class RoomScene {
     }
   }
 
+  dropFixture(kind: LightKind, clientX: number, clientY: number) {
+    this.cast({ clientX, clientY });
+    const { room, view } = this.state;
+    if (view === '3D') {
+      const walls = [...this.walls.values()].map(wall => wall.group);
+      for (const intersection of this.ray.intersectObjects(walls, true)) {
+        if (!visible(intersection.object)) continue;
+        const hit = getHit(intersection.object);
+        if (hit?.type === 'wall') {
+          return fixturePlacement(this.ray.ray, room.dimensions, kind, { wall: hit.wall, point: intersection.point });
+        }
+        if (hit?.type === 'opening') break;
+      }
+    }
+    return fixturePlacement(this.ray.ray, room.dimensions, kind);
+  }
+
   private pointerDown = (event: PointerEvent) => {
     if (!this.state.interactive || event.button !== 0) return;
     if (this.down) {
@@ -374,34 +403,42 @@ export class RoomScene {
       this.down = undefined;
       return;
     }
-    this.down = { pointer: event.pointerId, x: event.clientX, y: event.clientY, start: this.state.room };
-    if (this.state.tool !== 'Move') return;
+    const { room, tool, dragFixtures, view } = this.state;
+    this.down = { pointer: event.pointerId, x: event.clientX, y: event.clientY, start: room };
+    if (tool !== 'Move' && !dragFixtures) return;
     const hit = this.pick(event);
-    if (!hit || hit.type === 'wall') return;
-    if (hit.type === 'opening' && this.state.view === 'Top') return;
+    if (!hit || hit.type === 'wall' || (tool !== 'Move' && hit.type !== 'light')) return;
+
+    if (hit.type === 'opening') {
+      if (view === 'Top') return;
+      const opening = room.openings.find(item => item.id === hit.id)!;
+      const wall = this.walls.get(opening.wall)!;
+      this.plane.setFromNormalAndCoplanarPoint(wallNormals[opening.wall], wall.group.position);
+      if (!this.ray.ray.intersectPlane(this.plane, this.point)) return;
+      wall.group.worldToLocal(this.point);
+      this.dragOffset.set(opening.offset - this.point.x, opening.sill - this.point.y, 0);
+    } else {
+      this.plane.set(yAxis, 0);
+      let anchor: Vector3;
+      if (hit.type === 'light') {
+        const light = room.lights.find(item => item.id === hit.id)!;
+        const wall = isWallMount(light.mount) ? light.mount : undefined;
+        if (wall && view === 'Top') return;
+        anchor = this.localPoint.set(light.x, light.y, light.z);
+        this.plane.setFromNormalAndCoplanarPoint(wall ? wallNormals[wall] : yAxis, anchor);
+      } else {
+        const furniture = room.furniture.find(item => item.id === hit.id)!;
+        anchor = this.localPoint.set(furniture.x, 0, furniture.z);
+      }
+      if (!this.ray.ray.intersectPlane(this.plane, this.point)) return;
+      this.dragOffset.copy(anchor).sub(this.point);
+    }
+
     event.stopPropagation();
     this.stopCamera();
     this.renderer.domElement.setPointerCapture(event.pointerId);
     this.down.hit = hit;
     this.state.onSelect(hit);
-    const room = this.state.room;
-    if (hit.type === 'opening') {
-      const o = room.openings.find(item => item.id === hit.id)!;
-      const wall = this.walls.get(o.wall)!;
-      this.plane.setFromNormalAndCoplanarPoint(wallNormals[o.wall], wall.group.position);
-      if (this.ray.ray.intersectPlane(this.plane, this.point)) {
-        wall.group.worldToLocal(this.point);
-        this.dragOffset.set(o.offset - this.point.x, o.sill - this.point.y, 0);
-      }
-    } else {
-      const item = hit.type === 'furniture'
-        ? room.furniture.find(item => item.id === hit.id)
-        : room.lights.find(item => item.id === hit.id);
-      if (!item) return;
-      const y = 'y' in item ? item.y : 0;
-      this.plane.set(yAxis, -y);
-      if (this.ray.ray.intersectPlane(this.plane, this.point)) this.dragOffset.set(item.x - this.point.x, 0, item.z - this.point.z);
-    }
   };
 
   private pointerMove = (event: PointerEvent) => {
@@ -418,14 +455,17 @@ export class RoomScene {
       this.walls.get(opening.wall)?.group.worldToLocal(this.point);
       const next = fitOpening(room.dimensions, { ...opening, offset: this.point.x + this.dragOffset.x, sill: this.point.y + this.dragOffset.y });
       if (openingFits(room, next)) this.state.onMove({ ...room, openings: room.openings.map(item => item.id === hit.id ? next : item) }, down.start);
+      return;
+    }
+
+    this.point.add(this.dragOffset);
+    const { x, y, z } = this.point;
+    if (hit.type === 'furniture') {
+      const items = room.furniture.map(item => item.id === hit.id ? fitFurniture(room.dimensions, { ...item, x, z }) : item);
+      this.state.onMove({ ...room, furniture: items }, down.start);
     } else {
-      const x = this.point.x + this.dragOffset.x;
-      const z = this.point.z + this.dragOffset.z;
-      if (hit.type === 'furniture') {
-        this.state.onMove({ ...room, furniture: room.furniture.map(item => item.id === hit.id ? fitFurniture(room.dimensions, { ...item, x, z }) : item) }, down.start);
-      } else {
-        this.state.onMove({ ...room, lights: room.lights.map(item => item.id === hit.id ? fitLight(room.dimensions, { ...item, x, z }) : item) }, down.start);
-      }
+      const lights = room.lights.map(item => item.id === hit.id ? fitLight(room.dimensions, { ...item, x, y, z }) : item);
+      this.state.onMove({ ...room, lights }, down.start);
     }
   };
 

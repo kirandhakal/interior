@@ -221,6 +221,7 @@ input:not([type="range"], [type="color"]), select {
 }
 .scene-stage { flex: 1 1 auto; min-height: min(35rem, 64vw); }
 .scene-host { position: absolute; inset: 0; }
+.scene-host[data-fixture-over="true"] { box-shadow: inset 0 0 0 2px var(--olive); }
 .scene-host > canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .scene-host[data-tool="Select"] > canvas { cursor: grab; }
 .scene-host[data-tool="Move"] > canvas { cursor: move; }
@@ -333,6 +334,14 @@ input:not([type="range"], [type="color"]), select {
 .two-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .three-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .object-catalog .button { justify-content: flex-start; padding-inline: .43rem; font-size: .8rem; }
+.fixture-card { justify-content: flex-start; padding-inline: .5rem; font-size: .8rem; min-height: 2.65rem; }
+.fixture-card[draggable="true"] { cursor: grab; }
+.fixture-card[draggable="true"]:active { cursor: grabbing; }
+.fixture-card svg { color: var(--olive); }
+.fixture-heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.fixture-heading .button { min-height: 2rem; padding: .23rem .44rem; }
+.fixture-heading .button[aria-pressed="true"] { color: var(--olive); background: var(--olive-soft); }
+.fixture-output { display: grid; grid-template-columns: minmax(0, 1fr) 5rem; align-items: center; gap: .7rem; }
 .object-list { display: grid; align-content: start; gap: .3rem; margin: 0; padding: 0; list-style: none; max-height: 14.4rem; overflow: auto; }
 .object-list li { display: flex; align-items: center; min-width: 0; padding: .2rem .21rem .2rem 0; border: 1px solid var(--line); border-radius: .43rem; background: var(--white); }
 .object-list li[data-active="true"] { background: var(--olive-soft); border-color: #d2dacb; }

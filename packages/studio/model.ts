@@ -3,7 +3,9 @@ export const FINISHES = ['Matte', 'Eggshell', 'Satin'] as const;
 export const DAYLIGHTS = ['Morning', 'Afternoon', 'Evening', 'Night'] as const;
 export const FURNITURE = ['Sofa', 'Armchair', 'Coffee table', 'Rug', 'Plant', 'Sideboard', 'Wall art'] as const;
 export const OPENINGS = ['Door', 'Window'] as const;
-export const LIGHTS = ['Ceiling light', 'Spotlight'] as const;
+export const LIGHTS = ['Bulb', 'Floor lamp', 'Wall sconce', 'Ceiling light', 'Spotlight', 'LED strip'] as const;
+export const LIGHT_MOUNTS = ['Ceiling', 'Floor', 'Free', ...WALLS] as const;
+export const MAX_LIGHT_LUMENS = 20000;
 
 export type Wall = typeof WALLS[number];
 export type Finish = typeof FINISHES[number];
@@ -11,12 +13,17 @@ export type Daylight = typeof DAYLIGHTS[number];
 export type FurnitureKind = typeof FURNITURE[number];
 export type OpeningKind = typeof OPENINGS[number];
 export type LightKind = typeof LIGHTS[number];
+export type LightMount = typeof LIGHT_MOUNTS[number];
 export type Dimensions = { length: number; width: number; height: number };
 export type Paint = { color: string; finish: Finish };
 export type WallPaint = Record<Wall, Paint>;
 export type Opening = { id: string; kind: OpeningKind; wall: Wall; offset: number; sill: number; width: number; height: number };
 export type Furniture = { id: string; kind: FurnitureKind; x: number; z: number; rotation: number };
-export type Light = { id: string; kind: LightKind; x: number; y: number; z: number; brightness: number; warmth: number; direction: number; tilt: number };
+export type Light = {
+  id: string; kind: LightKind; x: number; y: number; z: number;
+  brightness: number; warmth: number; direction: number; tilt: number;
+  mount?: LightMount; lumens?: number; enabled?: boolean;
+};
 export type PaintOption = { id: string; name: string; walls: WallPaint };
 export type Room = {
   id: string;
@@ -37,6 +44,21 @@ export type Account = { email: string };
 export const WALL_LABELS: Record<Wall, string> = {
   north: 'North wall', east: 'East wall', south: 'South wall', west: 'West wall',
 };
+export const LIGHT_MOUNT_LABELS: Record<LightMount, string> = {
+  ...WALL_LABELS, Ceiling: 'Ceiling', Floor: 'Floor', Free: 'Freestanding position',
+};
+export const FIXTURE_MOUNTS: Record<LightKind, readonly LightMount[]> = {
+  Bulb: ['Ceiling', ...WALLS, 'Free'],
+  'Floor lamp': ['Floor'],
+  'Wall sconce': WALLS,
+  'Ceiling light': ['Ceiling', 'Free'],
+  Spotlight: ['Ceiling', ...WALLS, 'Free'],
+  'LED strip': ['Ceiling', ...WALLS],
+};
+export const isWallMount = (mount: LightMount | undefined): mount is Wall =>
+  mount === 'north' || mount === 'east' || mount === 'south' || mount === 'west';
+export const isPointFixture = (kind: LightKind) => kind === 'Bulb' || kind === 'Floor lamp';
+export const lightLumens = (light: Light) => light.lumens ?? Math.round(light.brightness * 0.39 * Math.PI);
 export const FURNITURE_SIZE: Record<FurnitureKind, [number, number]> = {
   Sofa: [2.42, 0.99], Armchair: [0.92, 0.94], 'Coffee table': [1.24, 0.81],
   Rug: [2.75, 2.01], Plant: [0.62, 0.62], Sideboard: [1.38, 0.55], 'Wall art': [1.25, 0.06],
@@ -96,10 +118,25 @@ export function fitFurniture(dimensions: Dimensions, item: Furniture): Furniture
 }
 
 export function fitLight(dimensions: Dimensions, light: Light): Light {
-  return {
-    ...light,
-    x: round(clamp(light.x, -dimensions.length / 2 + 0.1, dimensions.length / 2 - 0.1)),
-    z: round(clamp(light.z, -dimensions.width / 2 + 0.1, dimensions.width / 2 - 0.1)),
-    y: round(clamp(light.y, 0.25, dimensions.height - 0.1)),
-  };
+  const mount = light.mount ?? 'Free';
+  const margin = mount === 'Floor' ? 0.24 : light.kind === 'LED strip' ? 0.44 : 0.12;
+  const halfLength = dimensions.length / 2;
+  const halfWidth = dimensions.width / 2;
+  let x = round(clamp(light.x, -halfLength + margin, halfLength - margin));
+  let z = round(clamp(light.z, -halfWidth + margin, halfWidth - margin));
+  let y = round(clamp(light.y, 0.25, dimensions.height - 0.1));
+  switch (mount) {
+    case 'north': z = -halfWidth; break;
+    case 'south': z = halfWidth; break;
+    case 'east': x = halfLength; break;
+    case 'west': x = -halfLength; break;
+    case 'Ceiling': y = dimensions.height; break;
+    case 'Floor': y = 0; break;
+    case 'Free':
+      // Preserve the placement rules for projects saved before fixtures had mounts.
+      x = round(clamp(light.x, -halfLength + 0.1, halfLength - 0.1));
+      z = round(clamp(light.z, -halfWidth + 0.1, halfWidth - 0.1));
+      break;
+  }
+  return { ...light, x, y, z };
 }

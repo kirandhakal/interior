@@ -1,6 +1,6 @@
 import {
   WALLS, fitFurniture, fitLight, fitOpening, furnitureFitsRoom, openingFits,
-  type Dimensions, type Furniture, type FurnitureKind, type Light, type LightKind,
+  type Dimensions, type Furniture, type FurnitureKind,
   type Opening, type OpeningKind, type Project, type Room, type Wall, type WallPaint,
 } from '@studio/model';
 
@@ -65,9 +65,4 @@ export function addFurniture(room: Room, kind: FurnitureKind): Furniture | undef
   if (!furnitureFitsRoom(room.dimensions, seed)) return;
   const candidates = positions.map(([x, z]) => fitFurniture(room.dimensions, { ...seed, x, z }));
   return candidates.find(item => room.furniture.every(other => Math.hypot(item.x - other.x, item.z - other.z) > 0.65)) ?? candidates[0];
-}
-
-export function addLight(room: Room, kind: LightKind): Light {
-  return fitLight(room.dimensions, { id: crypto.randomUUID(), kind, x: Math.sin(room.lights.length) * 1.5, z: 0.15,
-    y: room.dimensions.height - 0.2, brightness: 60, warmth: 3300, direction: 0, tilt: 25 });
 }

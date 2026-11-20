@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository, TypeOrmModule } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { fitLight, furnitureBounds, furnitureFitsRoom, openingFits, type Project, type SavedProject } from '../../../../packages/studio/model';
+import { FIXTURE_MOUNTS, fitLight, furnitureBounds, furnitureFitsRoom, openingFits, type Project, type SavedProject } from '../../../../packages/studio/model';
 import { AuthModule, SessionGuard, type AuthRequest } from '../auth/auth';
 import { ProjectEntity } from '../database/entities';
 import { CreateProjectDto, UpdateProjectDto } from './project.dto';
@@ -27,6 +27,9 @@ function checkLayout(project: Project) {
       }
     }
     for (const light of room.lights) {
+      if (!FIXTURE_MOUNTS[light.kind].includes(light.mount ?? 'Free')) {
+        throw new BadRequestException(`${light.kind} has an invalid mount in ${room.name}.`);
+      }
       const fitted = fitLight(room.dimensions, light);
       if (Math.hypot(light.x - fitted.x, light.y - fitted.y, light.z - fitted.z) > 0.002) {
         throw new BadRequestException(`A light is outside ${room.name}.`);
