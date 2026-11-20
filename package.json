@@ -8,6 +8,7 @@
     "dev:api": "npm run dev -w apps/api",
     "build": "npm run build -w apps/api && npm run build -w apps/web",
     "typecheck": "npm run typecheck --workspaces",
+    "db:setup": "npm run db:setup -w apps/api",
     "migration:run": "npm run migration:run -w apps/api",
     "migration:revert": "npm run migration:revert -w apps/api"
   }

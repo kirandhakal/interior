@@ -6,6 +6,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/apps/api/src/main.js",
     "typecheck": "tsc --noEmit",
+    "db:setup": "npm run build && node dist/apps/api/src/database/setup.js",
     "migration:run": "npm run build && typeorm migration:run -d dist/apps/api/src/database/data-source.js",
     "migration:revert": "npm run build && typeorm migration:revert -d dist/apps/api/src/database/data-source.js"
   },
