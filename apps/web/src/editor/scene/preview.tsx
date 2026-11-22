@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Box, Hand, LampCeiling, Maximize, Minus, MousePointer2, Plus, Scan } from 'lucide-react';
+import { Box, Hand, LampCeiling, Maximize, Minus, MousePointer2, Orbit, Plus, Scan } from 'lucide-react';
 import { CEILING_DECOR, CEILING_DECOR_DRAG_TYPE, FURNITURE, LIGHTS, type CeilingDecorKind, type FurnitureKind, type LightKind, type Room } from '@studio/model';
 import { IconButton, Segmented } from '@/components/ui';
 import { INTERIOR_DRAG_TYPE, type InteriorPlacement } from '../interior-placement';
 import { FIXTURE_DRAG_TYPE, type LightPlacement } from '../lighting/fixtures';
-import { RoomScene, type CameraAction, type Hit, type Tool, type View } from './room-scene';
+import { RoomScene, isCeilingView, type CameraAction, type Hit, type Tool, type View } from './room-scene';
 
 const doNothing = () => {};
 
@@ -62,7 +62,7 @@ export function Preview({
     onDragOver={event => {
       const types = event.dataTransfer.types;
       if (error || !((onDropFixture && types.includes(FIXTURE_DRAG_TYPE)) ||
-        (view === 'Ceiling' && onDropCeilingDecor && types.includes(CEILING_DECOR_DRAG_TYPE)) ||
+        (isCeilingView(view) && onDropCeilingDecor && types.includes(CEILING_DECOR_DRAG_TYPE)) ||
         (onDropInterior && types.includes(INTERIOR_DRAG_TYPE)))) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = 'copy';
@@ -101,9 +101,9 @@ export function Preview({
 }
 
 export function ViewSwitch({ view, onChange, allowCeiling = true }: { view: View; onChange: (view: View) => void; allowCeiling?: boolean }) {
-  return <Segmented label="Camera view" value={view} values={allowCeiling ? ['3D', 'Top', 'Ceiling'] : ['3D', 'Top']} onChange={onChange}
+  return <Segmented label="Camera view" value={view} values={allowCeiling ? ['3D', 'Top', 'Ceiling', 'Ceiling Outside'] : ['3D', 'Top']} onChange={onChange}
     render={value => {
-      const Icon = value === '3D' ? Box : value === 'Top' ? Scan : LampCeiling;
+      const Icon = value === '3D' ? Box : value === 'Top' ? Scan : value === 'Ceiling' ? LampCeiling : Orbit;
       return <><Icon size={15} /><span>{value}<span className="sr-only"> view</span></span></>;
     }} />;
 }

@@ -1,6 +1,6 @@
 import {
-  CatmullRomCurve3, CylinderGeometry, DoubleSide, Float32BufferAttribute, Group, IcosahedronGeometry, Mesh, MeshStandardMaterial,
-  SphereGeometry, TorusGeometry, TubeGeometry, Vector3, type BufferGeometry,
+  CatmullRomCurve3, CylinderGeometry, DoubleSide, ExtrudeGeometry, Float32BufferAttribute, Group, IcosahedronGeometry,
+  Mesh, MeshStandardMaterial, Shape, SphereGeometry, TorusGeometry, TubeGeometry, Vector3, type BufferGeometry,
 } from 'three';
 import { ceilingDecorBounds, type CeilingDecor, type Dimensions } from '@studio/model';
 import { ParametricGeometry } from 'three/addons/geometries/ParametricGeometry.js';
@@ -43,6 +43,30 @@ export function createCeilingDecor(kind: CeilingDecor['kind']) {
   }
 
   switch (kind) {
+    case 'Ceiling fan': {
+      cord.color.set('#403b36');
+      cord.metalness = 0.52;
+      cord.roughness = 0.42;
+      cylinder(group, cord, 0.104, 0.091, 0.044, 0, -0.022, 0);
+      cylinder(group, cord, 0.019, 0.019, 0.13, 0, -0.106, 0);
+      cylinder(group, cord, 0.103, 0.117, 0.078, 0, -0.199, 0);
+      add(new SphereGeometry(0.118, 24, 12), cord, 0, -0.234).scale.y = 0.34;
+      cylinder(group, accent, 0.037, 0.031, 0.015, 0, -0.272, 0);
+      const blade = new Shape();
+      blade.moveTo(0.08, -0.026);
+      blade.quadraticCurveTo(0.32, -0.03, 0.54, -0.095);
+      blade.quadraticCurveTo(0.583, -0.103, 0.583, -0.052);
+      blade.quadraticCurveTo(0.593, 0.02, 0.54, 0.036);
+      blade.quadraticCurveTo(0.38, 0.075, 0.08, 0.041);
+      blade.closePath();
+      for (let i = 0; i < 3; i++) {
+        const angle = i * Math.PI * 2 / 3;
+        const geometry = new ExtrudeGeometry(blade, { depth: 0.012, bevelThickness: 0.004, bevelSize: 0.004, bevelSegments: 1 });
+        geometry.rotateX(-Math.PI / 2);
+        add(geometry, finish, 0, -0.223).rotation.y = angle;
+      }
+      break;
+    }
     case 'Hanging plant':
       for (let i = 0; i < 3; i++) {
         const angle = i * Math.PI * 2 / 3;

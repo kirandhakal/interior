@@ -23,7 +23,7 @@ import { PaintPanel, colorStyle } from './paint/panel';
 import { RoomDialog } from './room-dialog';
 import { addFurniture, newRoom, PRESETS, resizeRoom, starterProject } from './rooms';
 import { Preview, SceneToolbar, ViewSwitch } from './scene/preview';
-import type { CameraAction, Hit, Tool, View } from './scene/room-scene';
+import { isCeilingView, type CameraAction, type Hit, type Tool, type View } from './scene/room-scene';
 
 type Tab = 'Paint' | 'Ceiling' | ObjectTab;
 type Dialog = 'add' | 'room' | 'compare' | 'auth' | 'projects';
@@ -70,6 +70,7 @@ export function Editor() {
   const [wall, setWall] = useState<Wall>(DEFAULT_WALL);
   const [selection, setSelection] = useState<Hit | null>(initialSelection);
   const [view, setView] = useState<View>('3D');
+  const ceilingView = isCeilingView(view);
   const [tool, setTool] = useState<Tool>('Select');
   const [command, setCommand] = useState<{ action: CameraAction }>();
   const [dialog, setDialog] = useState<Dialog>();
@@ -164,7 +165,7 @@ export function Editor() {
     setSelection(hit);
     if (hit.type === 'wall') {
       setWall(hit.wall);
-      if (view === 'Ceiling' && tab === 'Ceiling') return;
+      if (ceilingView && tab === 'Ceiling') return;
       setTab('Paint');
     } else {
       if (hit.type === 'light' && tab === 'Ceiling' && room.lights.some(light => light.id === hit.id && light.mount === 'Ceiling')) return;
@@ -174,7 +175,7 @@ export function Editor() {
 
   const changeView = (next: View) => {
     setView(next);
-    if (next === 'Ceiling') {
+    if (isCeilingView(next)) {
       setTab('Ceiling');
       if (selection?.type !== 'ceilingDecor' && !(selection?.type === 'light' && room.lights.some(light => light.id === selection.id && light.mount === 'Ceiling'))) {
         setSelection(null);
@@ -192,11 +193,11 @@ export function Editor() {
       : newFixture(room, kind, wall, placement);
     changeRoom({ ...room, lights: [...room.lights, light] });
     if (tab === 'Ceiling' && light.mount === 'Ceiling') {
-      setView('Ceiling');
+      if (!ceilingView) setView('Ceiling');
       setSelection({ type: 'light', id: light.id });
       return;
     }
-    if (view === 'Ceiling' && light.mount !== 'Ceiling') setView('3D');
+    if (ceilingView && light.mount !== 'Ceiling') setView('3D');
     sceneSelect({ type: 'light', id: light.id });
   };
 
@@ -208,7 +209,7 @@ export function Editor() {
     const item = addFurniture(room, kind, placement);
     if (!item) { notify('This item is too large for the room.', true); return; }
     changeRoom({ ...room, furniture: [...room.furniture, item] });
-    if (view === 'Ceiling') setView('3D');
+    if (ceilingView) setView('3D');
     sceneSelect({ type: 'furniture', id: item.id });
   };
 
@@ -222,7 +223,7 @@ export function Editor() {
     const item = placement ? fitCeilingDecor(room.dimensions, { ...seed, ...placement })
       : pickCeilingPosition(room, (x, z) => fitCeilingDecor(room.dimensions, { ...seed, x, z }));
     changeRoom({ ...room, ceilingDecor: [...decor, item] });
-    setView('Ceiling');
+    if (!ceilingView) setView('Ceiling');
     sceneSelect({ type: 'ceilingDecor', id: item.id });
   };
 
@@ -307,7 +308,7 @@ export function Editor() {
           {tabs.map(({ name, icon: Icon }) => <button key={name} type="button" aria-pressed={tab === name} onClick={() => {
             setTab(name);
             if (name === 'Paint') selectWall(wall);
-            if (name === 'Ceiling') changeView('Ceiling');
+            if (name === 'Ceiling' && !ceilingView) changeView('Ceiling');
           }}><Icon size={18} /><span>{name}</span></button>)}
         </nav>
         <section className="dimensions-card">
@@ -338,7 +339,7 @@ export function Editor() {
             dragFixtures={tab === 'Lighting' || tab === 'Ceiling'} dragInterior={tab === 'Furniture'} dragCeilingDecor={tab === 'Ceiling'}
             onSelect={sceneSelect} onMove={changeRoom} onDropFixture={(kind, placement) => {
               if (placement) addFixture(kind, placement);
-              else notify(view === 'Ceiling' ? 'Drop a ceiling-mounted fixture onto the ceiling.'
+              else notify(ceilingView ? 'Drop a ceiling-mounted fixture onto the ceiling.'
                 : kind === 'Wall sconce' ? 'Drop the sconce onto a visible wall in 3D view.' : 'Drop the fixture inside the room.', true);
             }} onDropInterior={(kind, placement) => {
               if (placement) addInterior(kind, placement);
@@ -349,7 +350,8 @@ export function Editor() {
             }} />
           <SceneToolbar tool={tool} onTool={setTool} onCamera={action => setCommand({ action })} />
           {isWall && view === '3D' && <span className="scene-selection"><span style={colorStyle(wallHex)} /> {WALL_LABELS[wall]}</span>}
-          <span className="scene-hint">{view === 'Ceiling' ? 'Drag empty space to orbit · Drag decor to move it' : tab === 'Lighting' ? 'Drag a fixture to move it'
+          <span className="scene-hint">{view === 'Ceiling' ? 'Looking straight up · Drag decor to move it'
+            : view === 'Ceiling Outside' ? 'Drag empty space to orbit · Drag decor to move it' : tab === 'Lighting' ? 'Drag a fixture to move it'
             : tab === 'Furniture' || tool === 'Move' ? 'Drag an object to move it'
             : view === '3D' ? 'Drag to orbit · Scroll to zoom' : 'Scroll or pinch to zoom'}</span>
         </div>
@@ -370,9 +372,9 @@ export function Editor() {
       <aside className="inspector" aria-label={tab + ' options'}>
         <div className="inspector-content" key={tab + room.id}>
           {tab === 'Paint' ? <PaintPanel key={wall} room={room} wall={wall} onWall={selectWall} onChange={changeRoom} onCompare={() => setDialog('compare')} />
-            : tab === 'Ceiling' ? <CeilingPanel room={room} selection={selection} inCeilingView={view === 'Ceiling'}
+            : tab === 'Ceiling' ? <CeilingPanel room={room} selection={selection} inCeilingView={ceilingView}
               onAddDecor={addCeilingDecor} onAddFixture={addFixture} onSelect={setSelection} onChange={(next, group) => {
-                if (next.ceilingFinish !== room.ceilingFinish) setView('Ceiling');
+                if (next.ceilingFinish !== room.ceilingFinish && !ceilingView) setView('Ceiling');
                 changeRoom(next, group);
               }} />
             : <ObjectPanel tab={tab} room={room} wall={wall} selection={selection} onAddFixture={addFixture} onAddInterior={addInterior} onSelect={hit => {

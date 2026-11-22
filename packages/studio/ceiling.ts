@@ -2,6 +2,7 @@ export const CEILING_FINISHES = ['Plain plaster', 'Wallpaper', 'Stencils', 'Pres
 export type CeilingFinish = typeof CEILING_FINISHES[number];
 
 export const CEILING_CATALOG = {
+  'Ceiling fan': { category: 'Fans', size: [1.2, 1.2], color: '#916445' },
   'Hanging plant': { category: 'Natural', size: [0.72, 0.72], color: '#B67854' },
   'Wooden beam': { category: 'Natural', size: [2.35, 0.24], color: '#895B3C' },
   Wreath: { category: 'Natural', size: [0.96, 0.96], color: '#557447' },

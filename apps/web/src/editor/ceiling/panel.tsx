@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { LampCeiling, Plus } from 'lucide-react';
 import {
-  CEILING_CATALOG, CEILING_DECOR, CEILING_DECOR_DRAG_TYPE, CEILING_DECOR_SCALE, CEILING_FINISHES, CEILING_LIGHTS,
-  LIMITS, ceilingDecorBounds, clamp, fitCeilingDecor,
+  CEILING_CATALOG, CEILING_DECOR, CEILING_DECOR_DRAG_TYPE, CEILING_DECOR_SCALE, CEILING_FINISHES,
+  FIXTURE_MOUNTS, LIGHTS, LIMITS, ceilingDecorBounds, clamp, fitCeilingDecor,
   type CeilingDecor, type CeilingDecorKind, type LightKind, type Room,
 } from '@studio/model';
 import { NumberField, RangeField, SelectField } from '@/components/ui';
@@ -13,7 +13,8 @@ import { FixtureSettings } from '../lighting/panel';
 import { ObjectList } from '../object-list';
 import type { Hit } from '../scene/room-scene';
 
-const categories = ['Natural', 'Lighting', 'Patterns & textures', 'Party', 'Fabrics'] as const;
+const categories = ['Fans', 'Lighting', 'Natural', 'Patterns & textures', 'Party', 'Fabrics'] as const;
+const ceilingLights = LIGHTS.filter(kind => FIXTURE_MOUNTS[kind].includes('Ceiling'));
 
 export function CeilingPanel({ room, selection, inCeilingView, onAddDecor, onAddFixture, onSelect, onChange }: {
   room: Room;
@@ -24,7 +25,7 @@ export function CeilingPanel({ room, selection, inCeilingView, onAddDecor, onAdd
   onSelect: (hit: Hit | null) => void;
   onChange: (room: Room, group?: string) => void;
 }) {
-  const [category, setCategory] = useState<typeof categories[number]>('Natural');
+  const [category, setCategory] = useState<typeof categories[number]>('Fans');
   const decor = room.ceilingDecor ?? [];
   const lights = room.lights.filter(light => light.mount === 'Ceiling');
   const active = selection?.type === 'ceilingDecor' ? decor.find(item => item.id === selection.id) : undefined;
@@ -60,7 +61,7 @@ export function CeilingPanel({ room, selection, inCeilingView, onAddDecor, onAdd
           <p className="empty-inline">{atLimit ? 'This room has reached the limit for these items.'
             : inCeilingView ? 'Click to add an item, or drop it onto the ceiling.' : 'Click an item to add it and open Ceiling view.'}</p>
           <div className="two-fields interior-catalog" role="group" aria-label="Available ceiling items">
-            {lighting ? CEILING_LIGHTS.map(kind => addButton(kind, FIXTURE_DRAG_TYPE, () => onAddFixture(kind)))
+            {lighting ? ceilingLights.map(kind => addButton(kind, FIXTURE_DRAG_TYPE, () => onAddFixture(kind)))
               : CEILING_DECOR.filter(kind => CEILING_CATALOG[kind].category === category)
                 .map(kind => addButton(kind, CEILING_DECOR_DRAG_TYPE, () => onAddDecor(kind)))}
           </div>

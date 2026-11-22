@@ -168,7 +168,7 @@ input:not([type="range"], [type="color"]), select {
 .dimensions-card > span { font-size: .73rem; color: var(--muted); }
 
 .workspace { display: flex; flex-direction: column; min-width: 0; padding: 1.55rem 1.65rem .9rem; }
-.workspace-header { display: flex; justify-content: space-between; align-items: flex-end; gap: .7rem; margin-bottom: 1.23rem; }
+.workspace-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: .7rem; margin-bottom: 1.23rem; }
 .workspace-heading { min-width: 0; }
 .workspace-heading h1 {
   font: 400 clamp(2.1rem, 3vw, 3.04rem)/1.06 var(--display);
@@ -176,7 +176,7 @@ input:not([type="range"], [type="color"]), select {
   margin: .25rem 0 0;
   overflow-wrap: anywhere;
 }
-.workspace-actions { display: flex; align-items: center; gap: .65rem; margin-bottom: .1rem; }
+.workspace-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; margin-bottom: .1rem; }
 .undo-tools { display: flex; align-items: center; gap: .14rem; }
 .segmented {
   display: flex;
@@ -437,9 +437,10 @@ input:not([type="range"], [type="color"]), select {
 @media (max-width: 650px) {
   .studio-layout { display: flex; flex-direction: column; }
   .topbar { padding: .58rem .75rem; min-height: 3.65rem; }
-  .topbar-actions { gap: .25rem; }
-  .brand { font-size: .94rem; gap: .43rem; }
-  .brand-mark { width: 1.9rem; height: 1.9rem; }
+  .topbar-actions { flex: none; gap: .25rem; }
+  .brand { min-width: 0; font-size: .94rem; gap: .43rem; }
+  .brand > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+  .brand-mark { flex: none; width: 1.9rem; height: 1.9rem; }
   .brand-mark svg { width: 17px; }
   .top-projects span { display: none; }
   .top-projects { min-width: 2.15rem; padding-inline: .38rem; }
@@ -463,7 +464,7 @@ input:not([type="range"], [type="color"]), select {
   .dimensions-card { grid-row: 2; padding-inline: .44rem; }
   .dimensions-card > span { font-size: .67rem; }
   .workspace { padding: .95rem .72rem .7rem; }
-  .workspace-header { margin-bottom: .72rem; align-items: center; flex-wrap: wrap; }
+  .workspace-header { margin-bottom: .72rem; align-items: center; }
   .workspace-actions { gap: .18rem; margin: 0; }
   .workspace-actions .segmented > button { gap: .24rem; padding-inline: .34rem; font-size: .74rem; }
   .workspace-actions .segmented svg { width: 13px; }
@@ -494,10 +495,10 @@ input:not([type="range"], [type="color"]), select {
   .comparison-grid h3 { align-self: center; }
 }
 @media (max-width: 465px) {
-  .editor-navigation button svg { display: none; }
+  .editor-navigation button svg, .workspace-actions .segmented svg { display: none; }
 }
 @media (max-width: 355px) {
-  .topbar .brand strong, .scene-hint, .dimensions-card > span, .workspace-actions .segmented svg { display: none; }
+  .topbar .brand strong, .scene-hint, .dimensions-card > span { display: none; }
   .workspace-heading h1 { font-size: 1.72rem; }
 }
 @media (prefers-reduced-motion: reduce) {

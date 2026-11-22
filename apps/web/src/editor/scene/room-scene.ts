@@ -16,7 +16,8 @@ import { fixturePlacement } from './fixture-placement';
 
 type ObjectHit = { type: 'opening' | 'furniture' | 'light' | 'ceilingDecor'; id: string };
 export type Hit = { type: 'wall'; wall: Wall } | ObjectHit;
-export type View = '3D' | 'Top' | 'Ceiling';
+export type View = '3D' | 'Top' | 'Ceiling' | 'Ceiling Outside';
+export const isCeilingView = (view: View) => view === 'Ceiling' || view === 'Ceiling Outside';
 export type Tool = 'Select' | 'Move';
 export type CameraAction = 'in' | 'out' | 'reset';
 
@@ -50,6 +51,7 @@ function visible(object: Object3D) {
 const threeD = new Vector3(0.81, 0.65, 1);
 const above = new Vector3(0, 1.46, 0.0001);
 const below = new Vector3(0.72, -1.12, 0.94);
+const straightUpPolar = Math.PI - 0.000001;
 const yAxis = new Vector3(0, 1, 0);
 const emptyDecor: CeilingDecor[] = [];
 const defaultViewport = 7;
@@ -156,10 +158,11 @@ export class RoomScene {
     const { length, width, height } = this.state.room.dimensions;
     const aspect = this.width / this.height;
     const span = Math.hypot(length, width);
-    const scale = this.state.view === 'Top'
+    const { view } = this.state;
+    const scale = view === 'Top' || view === 'Ceiling'
       ? Math.max(width * 1.28, length * 1.28 / aspect)
       : Math.max(span * 0.91 + height * 0.2, height * 1.45, span * 1.11 / aspect);
-    const half = scale * (this.state.view === 'Ceiling' ? 0.54 : 0.5);
+    const half = scale * (view === 'Ceiling Outside' ? 0.54 : 0.5);
     this.camera.top = half;
     this.camera.bottom = -half;
     this.camera.left = -half * aspect;
@@ -171,20 +174,29 @@ export class RoomScene {
     const { length, width, height } = this.state.room.dimensions;
     const scale = Math.max(length, width, defaultViewport);
     const view = this.state.view;
-    const ceiling = view === 'Ceiling';
-    const direction = ceiling ? below : view === 'Top' ? above : threeD;
-    this.viewTarget.set(0, view === 'Top' ? 0 : height * (ceiling ? 0.55 : 0.47), 0);
-    this.desiredPosition.copy(direction).normalize().multiplyScalar(scale * 2).add(this.viewTarget);
+    if (view === 'Ceiling') {
+      this.viewTarget.set(0, height, 0);
+      this.desiredPosition.set(0, 0.04, 0.00001);
+    } else {
+      const outside = view === 'Ceiling Outside';
+      const direction = outside ? below : view === 'Top' ? above : threeD;
+      this.viewTarget.set(0, view === 'Top' ? 0 : height * (outside ? 0.55 : 0.47), 0);
+      this.desiredPosition.copy(direction).normalize().multiplyScalar(scale * 2).add(this.viewTarget);
+    }
     this.camera.zoom = 1;
     this.frameCamera();
-    this.animateCamera(instant);
+    this.animateCamera(instant || view === 'Ceiling');
   }
 
   private animateCamera(instant = false) {
     if (instant || reduceMotion()) {
+      // Clear any orbit momentum so a fixed plan view keeps its heading.
+      this.controls.enableDamping = false;
+      this.controls.update();
       this.camera.position.copy(this.desiredPosition);
       this.controls.target.copy(this.viewTarget);
       this.controls.update();
+      this.controls.enableDamping = true;
       this.cameraUntil = 0;
     } else {
       this.cameraUntil = performance.now() + 380;
@@ -222,15 +234,16 @@ export class RoomScene {
     const switchedRoom = room.id !== oldRoom?.id;
     const resized = room.dimensions !== oldRoom?.dimensions;
     const sameLayout = oldRoom && !resized;
-    const ceilingView = state.view === 'Ceiling';
+    const ceilingView = isCeilingView(state.view);
+    const straightUp = state.view === 'Ceiling';
     this.shadowDirty ||= resized || state.view !== previous?.view || room.ceilingDecor !== oldRoom?.ceilingDecor || room.openings !== oldRoom?.openings ||
       room.furniture !== oldRoom?.furniture || room.daylight !== oldRoom?.daylight;
     this.state = state;
     this.previous = state;
     this.controls.enabled = state.interactive;
-    this.controls.enableRotate = state.view !== 'Top';
-    this.controls.minPolarAngle = ceilingView ? Math.PI / 2 + 0.24 : 0.0001;
-    this.controls.maxPolarAngle = ceilingView ? Math.PI - 0.18 : Math.PI / 2 - 0.055;
+    this.controls.enableRotate = state.view === '3D' || state.view === 'Ceiling Outside';
+    this.controls.minPolarAngle = straightUp ? straightUpPolar : ceilingView ? Math.PI / 2 + 0.24 : 0.0001;
+    this.controls.maxPolarAngle = straightUp ? straightUpPolar : ceilingView ? Math.PI - 0.18 : Math.PI / 2 - 0.055;
     this.ceilingFill.visible = ceilingView;
     if (resized) {
       if (this.floor) {
@@ -353,8 +366,7 @@ export class RoomScene {
       else this.lightUntil = performance.now() + 450;
     }
     if (switchedRoom || state.view !== previous?.view || resized) {
-      const crossedCeiling = (state.view === 'Ceiling') !== (previous?.view === 'Ceiling');
-      this.setCamera(!previous || crossedCeiling);
+      this.setCamera(!previous || previous.view === 'Ceiling' || ceilingView !== isCeilingView(previous.view));
     }
     else if (!this.down && state.selection) {
       const hit = state.selection;
@@ -391,7 +403,8 @@ export class RoomScene {
     }
     const moved = this.controls.update();
     const isTop = this.state.view === 'Top' && this.controls.getPolarAngle() < 0.2;
-    const isCeiling = this.state.view === 'Ceiling';
+    const isCeiling = isCeilingView(this.state.view);
+    const straightUp = this.state.view === 'Ceiling';
     this.ground.visible = !isCeiling;
     if (this.floor) this.floor.group.visible = !isCeiling;
     if (this.ceiling) this.ceiling.slab.visible = isCeiling;
@@ -400,7 +413,7 @@ export class RoomScene {
     for (const item of this.ceilingDecor.values()) item.group.visible = !isTop;
     this.localPoint.copy(this.camera.position).sub(this.controls.target).setY(0).normalize();
     for (const [wall, mesh] of this.walls) {
-      const shown = isTop || wallNormals[wall].dot(this.localPoint) < 0.03;
+      const shown = isTop || straightUp || wallNormals[wall].dot(this.localPoint) < 0.03;
       const height = isTop ? 0.065 : 1;
       if (mesh.group.visible !== shown || mesh.group.scale.y !== height) this.shadowDirty = true;
       mesh.group.visible = shown;
@@ -453,7 +466,7 @@ export class RoomScene {
   dropFixture(kind: LightKind, clientX: number, clientY: number) {
     this.cast({ clientX, clientY });
     const { room, view } = this.state;
-    if (view === 'Ceiling') {
+    if (isCeilingView(view)) {
       const point = this.ceilingPoint();
       return point && FIXTURE_MOUNTS[kind].includes('Ceiling') ? { ...point, y: room.dimensions.height, mount: 'Ceiling' as const } : undefined;
     }
@@ -478,13 +491,13 @@ export class RoomScene {
   }
 
   dropCeilingDecor(clientX: number, clientY: number) {
-    if (this.state.view !== 'Ceiling') return;
+    if (!isCeilingView(this.state.view)) return;
     this.cast({ clientX, clientY });
     return this.ceilingPoint();
   }
 
   dropInterior(clientX: number, clientY: number) {
-    if (this.state.view === 'Ceiling') return;
+    if (isCeilingView(this.state.view)) return;
     this.cast({ clientX, clientY });
     const { length, width } = this.state.room.dimensions;
     const point = this.ray.ray.intersectPlane(new Plane(yAxis, 0), this.point);
@@ -507,7 +520,7 @@ export class RoomScene {
       (hit.type === 'ceilingDecor' && dragCeilingDecor))) return;
 
     if (hit.type === 'opening') {
-      if (view === 'Top') return;
+      if (view === 'Top' || view === 'Ceiling') return;
       const opening = room.openings.find(item => item.id === hit.id)!;
       const wall = this.walls.get(opening.wall)!;
       this.plane.setFromNormalAndCoplanarPoint(wallNormals[opening.wall], wall.group.position);
