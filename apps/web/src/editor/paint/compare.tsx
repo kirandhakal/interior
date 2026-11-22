@@ -31,7 +31,7 @@ export function CompareDialog({ room, onChange, onClose }: {
           <input id="option-name" placeholder="Option name" maxLength={LIMITS.name} value={name} onChange={event => setName(event.currentTarget.value)} />
           <button type="submit" className="button button-primary" disabled={room.options.length >= LIMITS.options}><Plus size={16} /> Capture current paint</button>
         </form>
-        <ViewSwitch view={view} onChange={setView} />
+        <ViewSwitch view={view} onChange={setView} allowCeiling={false} />
       </div>
       <div className="comparison-grid">
         <section>

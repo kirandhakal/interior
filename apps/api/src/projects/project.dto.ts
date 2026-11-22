@@ -4,7 +4,7 @@ import {
   IsString, IsUUID, Length, Matches, Max, Min, ValidateIf, ValidateNested,
 } from 'class-validator';
 import {
-  DAYLIGHTS, DIMENSION_BOUNDS, FINISHES, FURNITURE, HEX_COLOR, LIGHTS, LIGHT_MOUNTS, LIMITS, MAX_LIGHT_LUMENS, OPENINGS, WALLS,
+  DAYLIGHTS, DIMENSION_BOUNDS, FINISHES, FURNITURE, FURNITURE_SCALE, HEX_COLOR, LIGHTS, LIGHT_MOUNTS, LIMITS, MAX_LIGHT_LUMENS, OPENINGS, WALLS,
   type Daylight, type Finish, type FurnitureKind, type LightKind, type LightMount, type OpeningKind, type Project, type Wall,
 } from '../../../../packages/studio/model';
 
@@ -40,12 +40,22 @@ class OpeningDto {
   @number() @Min(0.4) @Max(6) height!: number;
 }
 
+class DisplayDto {
+  @IsBoolean() enabled!: boolean;
+  @number() @Min(0) @Max(100) brightness!: number;
+  @Matches(HEX_COLOR) color!: string;
+  @IsInt() @Min(1) @Max(3) count!: number;
+}
+
 class FurnitureDto {
   @Matches(idPattern) id!: string;
   @IsIn(FURNITURE) kind!: FurnitureKind;
   @number() @Min(-9) @Max(9) x!: number;
   @number() @Min(-9) @Max(9) z!: number;
   @number() @Min(0) @Max(360) rotation!: number;
+  @ValidateIf((_item, value) => value !== undefined) @number() @Min(FURNITURE_SCALE.min) @Max(FURNITURE_SCALE.max) scale?: number;
+  @ValidateIf((_item, value) => value !== undefined) @Matches(HEX_COLOR) color?: string;
+  @ValidateIf((_item, value) => value !== undefined) @IsObject() @ValidateNested() @Type(() => DisplayDto) display?: DisplayDto;
 }
 
 class LightDto {

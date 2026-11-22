@@ -6,19 +6,20 @@ import {
   Plus, Redo2, Ruler, Save, Settings2, Sun, Sunrise, Sunset, Undo2, UserRound, X, type LucideIcon,
 } from 'lucide-react';
 import {
-  DAYLIGHTS, LIMITS, WALL_LABELS, type Account, type Daylight, type LightKind, type Project, type Room, type SavedProject, type Wall,
+  DAYLIGHTS, LIMITS, WALL_LABELS, type Account, type Daylight, type FurnitureKind, type LightKind, type Project, type Room, type SavedProject, type Wall,
 } from '@studio/model';
 import { IconButton } from '@/components/ui';
 import { api, ApiError, errorMessage } from '@/projects/api';
 import { AuthDialog, ProjectDialog } from '@/projects/dialogs';
 import { readLocalProjects, saveLocalProject } from '@/projects/local';
 import { useProjectHistory } from './history';
+import type { InteriorPlacement } from './interior-placement';
 import { newFixture, type LightPlacement } from './lighting/fixtures';
 import { ObjectPanel, type ObjectTab } from './objects';
 import { CompareDialog } from './paint/compare';
 import { PaintPanel, colorStyle } from './paint/panel';
 import { RoomDialog } from './room-dialog';
-import { newRoom, PRESETS, resizeRoom, starterProject } from './rooms';
+import { addFurniture, newRoom, PRESETS, resizeRoom, starterProject } from './rooms';
 import { Preview, SceneToolbar, ViewSwitch } from './scene/preview';
 import type { CameraAction, Hit, Tool, View } from './scene/room-scene';
 
@@ -165,7 +166,20 @@ export function Editor() {
     }
     const light = newFixture(room, kind, wall, placement);
     changeRoom({ ...room, lights: [...room.lights, light] });
+    if (view === 'Ceiling' && light.mount !== 'Ceiling') setView('3D');
     sceneSelect({ type: 'light', id: light.id });
+  };
+
+  const addInterior = (kind: FurnitureKind, placement?: InteriorPlacement) => {
+    if (room.furniture.length >= LIMITS.furniture) {
+      notify(`This room has reached its ${LIMITS.furniture}-item limit.`, true);
+      return;
+    }
+    const item = addFurniture(room, kind, placement);
+    if (!item) { notify('This item is too large for the room.', true); return; }
+    changeRoom({ ...room, furniture: [...room.furniture, item] });
+    if (view === 'Ceiling') setView('3D');
+    sceneSelect({ type: 'furniture', id: item.id });
   };
 
   async function save(copy = false) {
@@ -276,13 +290,17 @@ export function Editor() {
         </header>
         <div className="scene-stage">
           <Preview room={room} view={view} tool={tool} selection={selection} command={command} interactive
-            dragFixtures={tab === 'Lighting'} onSelect={sceneSelect} onMove={changeRoom} onDropFixture={(kind, placement) => {
+            dragFixtures={tab === 'Lighting'} dragInterior={tab === 'Furniture'} onSelect={sceneSelect} onMove={changeRoom} onDropFixture={(kind, placement) => {
               if (placement) addFixture(kind, placement);
               else notify(kind === 'Wall sconce' ? 'Drop the sconce onto a visible wall in 3D view.' : 'Drop the fixture inside the room.', true);
+            }} onDropInterior={(kind, placement) => {
+              if (placement) addInterior(kind, placement);
+              else notify('Drop the item onto the floor in 3D or Top view.', true);
             }} />
           <SceneToolbar tool={tool} onTool={setTool} onCamera={action => setCommand({ action })} />
-          {isWall && <span className="scene-selection"><span style={colorStyle(wallHex)} /> {WALL_LABELS[wall]}</span>}
-          <span className="scene-hint">{tab === 'Lighting' ? 'Drag a fixture to move it' : tool === 'Move' ? 'Drag an object to move it'
+          {isWall && view === '3D' && <span className="scene-selection"><span style={colorStyle(wallHex)} /> {WALL_LABELS[wall]}</span>}
+          <span className="scene-hint">{view === 'Ceiling' ? 'Ceiling plan · Viewed from below' : tab === 'Lighting' ? 'Drag a fixture to move it'
+            : tab === 'Furniture' || tool === 'Move' ? 'Drag an object to move it'
             : view === '3D' ? 'Drag to orbit · Scroll to zoom' : 'Scroll or pinch to zoom'}</span>
         </div>
         <div className="daylight-strip">
@@ -302,7 +320,7 @@ export function Editor() {
       <aside className="inspector" aria-label={tab + ' options'}>
         <div className="inspector-content" key={tab + room.id}>
           {tab === 'Paint' ? <PaintPanel key={wall} room={room} wall={wall} onWall={selectWall} onChange={changeRoom} onCompare={() => setDialog('compare')} />
-            : <ObjectPanel tab={tab} room={room} wall={wall} selection={selection} onAddFixture={addFixture} onSelect={hit => {
+            : <ObjectPanel tab={tab} room={room} wall={wall} selection={selection} onAddFixture={addFixture} onAddInterior={addInterior} onSelect={hit => {
               if (hit?.type === 'wall') selectWall(hit.wall);
               else setSelection(hit);
             }} onChange={changeRoom} notify={message => notify(message, true)} />}

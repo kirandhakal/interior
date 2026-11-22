@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository, TypeOrmModule } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { FIXTURE_MOUNTS, fitLight, furnitureBounds, furnitureFitsRoom, openingFits, type Project, type SavedProject } from '../../../../packages/studio/model';
+import { FIXTURE_MOUNTS, fitLight, furnitureBounds, furnitureFitsRoom, hasDisplay, openingFits, type Project, type SavedProject } from '../../../../packages/studio/model';
 import { AuthModule, SessionGuard, type AuthRequest } from '../auth/auth';
 import { ProjectEntity } from '../database/entities';
 import { CreateProjectDto, UpdateProjectDto } from './project.dto';
@@ -21,6 +21,9 @@ function checkLayout(project: Project) {
       throw new BadRequestException(`Openings in ${room.name} overlap or exceed the wall bounds.`);
     }
     for (const item of room.furniture) {
+      if (item.display && (!hasDisplay(item.kind) || (item.kind === 'TV' && item.display.count !== 1))) {
+        throw new BadRequestException(`Invalid display settings for ${item.kind} in ${room.name}.`);
+      }
       const bounds = furnitureBounds(room.dimensions, item);
       if (!furnitureFitsRoom(room.dimensions, item) || Math.abs(item.x) > bounds.x + 0.002 || Math.abs(item.z) > bounds.z + 0.002) {
         throw new BadRequestException(`Furniture extends outside ${room.name}.`);

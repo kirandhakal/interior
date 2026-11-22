@@ -3,6 +3,7 @@ import {
   type Dimensions, type Furniture, type FurnitureKind,
   type Opening, type OpeningKind, type Project, type Room, type Wall, type WallPaint,
 } from '@studio/model';
+import type { InteriorPlacement } from './interior-placement';
 
 export const WALL_DEFAULT = '#EAE4D8';
 export const PRESETS = [
@@ -58,11 +59,12 @@ export function addOpening(room: Room, kind: OpeningKind, wall: Wall): Opening |
     .find(opening => openingFits(room, opening));
 }
 
-export function addFurniture(room: Room, kind: FurnitureKind): Furniture | undefined {
+export function addFurniture(room: Room, kind: FurnitureKind, placement?: InteriorPlacement): Furniture | undefined {
   const positions = [[0, 0], [1, 1], [-1, 1], [1, -1], [-1, -1], [0, 1.5], [1.8, 0], [-1.8, 0]];
   const id = crypto.randomUUID();
   const seed = fitFurniture(room.dimensions, { id, kind, x: 0, z: 0, rotation: 0 });
   if (!furnitureFitsRoom(room.dimensions, seed)) return;
+  if (placement) return fitFurniture(room.dimensions, { ...seed, ...placement });
   const candidates = positions.map(([x, z]) => fitFurniture(room.dimensions, { ...seed, x, z }));
   return candidates.find(item => room.furniture.every(other => Math.hypot(item.x - other.x, item.z - other.z) > 0.65)) ?? candidates[0];
 }

@@ -221,7 +221,7 @@ input:not([type="range"], [type="color"]), select {
 }
 .scene-stage { flex: 1 1 auto; min-height: min(35rem, 64vw); }
 .scene-host { position: absolute; inset: 0; }
-.scene-host[data-fixture-over="true"] { box-shadow: inset 0 0 0 2px var(--olive); }
+.scene-host[data-drop-over="true"] { box-shadow: inset 0 0 0 2px var(--olive); }
 .scene-host > canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .scene-host[data-tool="Select"] > canvas { cursor: grab; }
 .scene-host[data-tool="Move"] > canvas { cursor: move; }
@@ -342,6 +342,10 @@ input:not([type="range"], [type="color"]), select {
 .fixture-heading .button { min-height: 2rem; padding: .23rem .44rem; }
 .fixture-heading .button[aria-pressed="true"] { color: var(--olive); background: var(--olive-soft); }
 .fixture-output { display: grid; grid-template-columns: minmax(0, 1fr) 5rem; align-items: center; gap: .7rem; }
+.interior-catalog { align-items: stretch; max-height: 14rem; overflow: auto; padding: .2rem .18rem .24rem .2rem; }
+.interior-catalog .button { text-align: left; line-height: 1.2; }
+.interior-color input { height: 2.625rem; width: 100%; padding: .22rem; cursor: pointer; border: 1px solid var(--line-strong); border-radius: .4rem; }
+.display-controls { margin-top: .12rem; }
 .object-list { display: grid; align-content: start; gap: .3rem; margin: 0; padding: 0; list-style: none; max-height: 14.4rem; overflow: auto; }
 .object-list li { display: flex; align-items: center; min-width: 0; padding: .2rem .21rem .2rem 0; border: 1px solid var(--line); border-radius: .43rem; background: var(--white); }
 .object-list li[data-active="true"] { background: var(--olive-soft); border-color: #d2dacb; }
@@ -459,7 +463,7 @@ input:not([type="range"], [type="color"]), select {
   .dimensions-card { grid-row: 2; padding-inline: .44rem; }
   .dimensions-card > span { font-size: .67rem; }
   .workspace { padding: .95rem .72rem .7rem; }
-  .workspace-header { margin-bottom: .72rem; align-items: center; }
+  .workspace-header { margin-bottom: .72rem; align-items: center; flex-wrap: wrap; }
   .workspace-actions { gap: .18rem; margin: 0; }
   .workspace-actions .segmented > button { gap: .24rem; padding-inline: .34rem; font-size: .74rem; }
   .workspace-actions .segmented svg { width: 13px; }

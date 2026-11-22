@@ -4,11 +4,12 @@ import {
   Armchair, DoorOpen, Lightbulb, Plus, RectangleVertical,
 } from 'lucide-react';
 import {
-  FURNITURE, LIMITS, OPENINGS, WALL_LABELS, WALLS, fitFurniture, fitOpening, furnitureBounds, furnitureFitsRoom,
-  openingFits, wallSpan, type Furniture, type LightKind, type Opening, type Room, type Wall,
+  LIMITS, OPENINGS, WALL_LABELS, WALLS, fitOpening,
+  openingFits, wallSpan, type FurnitureKind, type LightKind, type Opening, type Room, type Wall,
 } from '@studio/model';
-import { NumberField, RangeField, SelectField } from '@/components/ui';
-import { addFurniture, addOpening } from './rooms';
+import { NumberField, SelectField } from '@/components/ui';
+import { addOpening } from './rooms';
+import { InteriorPanel } from './interior/panel';
 import { LightingPanel } from './lighting/panel';
 import { ObjectList } from './object-list';
 import type { Hit } from './scene/room-scene';
@@ -24,12 +25,13 @@ type ObjectPanelProps = {
   onChange: (room: Room, group?: string) => void;
   notify: (message: string) => void;
   onAddFixture: (kind: LightKind) => void;
+  onAddInterior: (kind: FurnitureKind) => void;
 };
 
 const tabs = {
   Openings: { icon: DoorOpen, heading: 'Doors & windows', description: 'Place openings along your walls.' },
   Lighting: { icon: Lightbulb, heading: 'Room lighting', description: 'Position and tune your fixtures.' },
-  Furniture: { icon: Armchair, heading: 'Furniture', description: 'Furnish and arrange your room.' },
+  Furniture: { icon: Armchair, heading: 'Interiors', description: 'Furnish and arrange your room.' },
 };
 
 export function ObjectPanel(props: ObjectPanelProps) {
@@ -41,7 +43,7 @@ export function ObjectPanel(props: ObjectPanelProps) {
     </div>
     {props.tab === 'Openings' ? <OpeningControls {...props} />
       : props.tab === 'Lighting' ? <LightingPanel {...props} />
-      : <FurnitureControls {...props} />}
+      : <InteriorPanel {...props} />}
   </div>;
 }
 
@@ -82,49 +84,6 @@ function OpeningControls({ room, wall, selection, onSelect, onChange, notify }: 
         <NumberField label="Offset from center" value={active.offset} onChange={offset => update(active, { offset })} />
         {active.kind === 'Window' && <NumberField label="Sill height" min={0} value={active.sill} onChange={sill => update(active, { sill })} />}
       </div>
-    </section>}
-  </>;
-}
-
-function FurnitureControls({ room, selection, onSelect, onChange, notify }: ObjectPanelProps) {
-  const active = selection?.type === 'furniture' ? room.furniture.find(item => item.id === selection.id) : undefined;
-  const bounds = active ? furnitureBounds(room.dimensions, active) : undefined;
-  const update = (item: Furniture, changes: Partial<Furniture>, group?: string) => {
-    const candidate = { ...item, ...changes };
-    if (!furnitureFitsRoom(room.dimensions, candidate)) {
-      notify('This item is too wide to turn that far in this room.');
-      return;
-    }
-    const next = fitFurniture(room.dimensions, candidate);
-    onChange({ ...room, furniture: room.furniture.map(value => value.id === item.id ? next : value) }, group);
-  };
-  return <>
-    <section className="paint-section">
-      <h3>Add an item</h3>
-      <div className="two-fields object-catalog">
-        {FURNITURE.map(kind => <button type="button" className="button button-secondary" key={kind}
-          disabled={room.furniture.length >= LIMITS.furniture} onClick={() => {
-            const item = addFurniture(room, kind);
-            if (!item) { notify('This item is too large for the room.'); return; }
-            onChange({ ...room, furniture: [...room.furniture, item] });
-            onSelect({ type: 'furniture', id: item.id });
-          }}><Plus size={15} /> {kind}</button>)}
-      </div>
-    </section>
-    <ObjectList entries={room.furniture} icon={Armchair} selected={active?.id}
-      onSelect={item => onSelect({ type: 'furniture', id: item.id })}
-      onRemove={item => {
-        onChange({ ...room, furniture: room.furniture.filter(value => value.id !== item.id) });
-        if (active?.id === item.id) onSelect(null);
-      }} />
-    {active && bounds && <section className="object-details" key={active.id}>
-      <h3>{active.kind} placement</h3>
-      <div className="two-fields">
-        <NumberField label="X position" value={active.x} min={-bounds.x} max={bounds.x} onChange={x => update(active, { x })} />
-        <NumberField label="Z position" value={active.z} min={-bounds.z} max={bounds.z} onChange={z => update(active, { z })} />
-      </div>
-      <RangeField label="Rotation" value={active.rotation} min={0} max={360} step={1} unit="°"
-        onChange={rotation => update(active, { rotation }, active.id + ':rotation')} />
     </section>}
   </>;
 }

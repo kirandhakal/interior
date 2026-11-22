@@ -1,7 +1,9 @@
+import { INTERIOR_CATALOG, type FurnitureKind } from './interior';
+export { DEFAULT_DISPLAY, FURNITURE, FURNITURE_SCALE, INTERIOR_CATALOG, INTERIOR_CATEGORIES, getDisplay, hasDisplay, type FurnitureKind } from './interior';
+
 export const WALLS = ['north', 'east', 'south', 'west'] as const;
 export const FINISHES = ['Matte', 'Eggshell', 'Satin'] as const;
 export const DAYLIGHTS = ['Morning', 'Afternoon', 'Evening', 'Night'] as const;
-export const FURNITURE = ['Sofa', 'Armchair', 'Coffee table', 'Rug', 'Plant', 'Sideboard', 'Wall art'] as const;
 export const OPENINGS = ['Door', 'Window'] as const;
 export const LIGHTS = ['Bulb', 'Floor lamp', 'Wall sconce', 'Ceiling light', 'Spotlight', 'LED strip'] as const;
 export const LIGHT_MOUNTS = ['Ceiling', 'Floor', 'Free', ...WALLS] as const;
@@ -10,7 +12,6 @@ export const MAX_LIGHT_LUMENS = 20000;
 export type Wall = typeof WALLS[number];
 export type Finish = typeof FINISHES[number];
 export type Daylight = typeof DAYLIGHTS[number];
-export type FurnitureKind = typeof FURNITURE[number];
 export type OpeningKind = typeof OPENINGS[number];
 export type LightKind = typeof LIGHTS[number];
 export type LightMount = typeof LIGHT_MOUNTS[number];
@@ -18,7 +19,11 @@ export type Dimensions = { length: number; width: number; height: number };
 export type Paint = { color: string; finish: Finish };
 export type WallPaint = Record<Wall, Paint>;
 export type Opening = { id: string; kind: OpeningKind; wall: Wall; offset: number; sill: number; width: number; height: number };
-export type Furniture = { id: string; kind: FurnitureKind; x: number; z: number; rotation: number };
+export type DisplaySettings = { enabled: boolean; brightness: number; color: string; count: number };
+export type Furniture = {
+  id: string; kind: FurnitureKind; x: number; z: number; rotation: number;
+  scale?: number; color?: string; display?: DisplaySettings;
+};
 export type Light = {
   id: string; kind: LightKind; x: number; y: number; z: number;
   brightness: number; warmth: number; direction: number; tilt: number;
@@ -59,12 +64,8 @@ export const isWallMount = (mount: LightMount | undefined): mount is Wall =>
   mount === 'north' || mount === 'east' || mount === 'south' || mount === 'west';
 export const isPointFixture = (kind: LightKind) => kind === 'Bulb' || kind === 'Floor lamp';
 export const lightLumens = (light: Light) => light.lumens ?? Math.round(light.brightness * 0.39 * Math.PI);
-export const FURNITURE_SIZE: Record<FurnitureKind, [number, number]> = {
-  Sofa: [2.42, 0.99], Armchair: [0.92, 0.94], 'Coffee table': [1.24, 0.81],
-  Rug: [2.75, 2.01], Plant: [0.62, 0.62], Sideboard: [1.38, 0.55], 'Wall art': [1.25, 0.06],
-};
 export const DIMENSION_BOUNDS = { length: [1.2, 18], width: [1.2, 18], height: [2, 6] } as const;
-export const LIMITS = { rooms: 30, openings: 18, furniture: 30, lights: 8, options: 12, name: 80 };
+export const LIMITS = { rooms: 30, openings: 18, furniture: 60, lights: 8, options: 12, name: 80 };
 export const HEX_COLOR = /^#[\da-f]{6}$/i;
 export const wallSpan = (dimensions: Dimensions, wall: Wall) =>
   wall === 'north' || wall === 'south' ? dimensions.length : dimensions.width;
@@ -92,16 +93,18 @@ export function fitOpening(dimensions: Dimensions, opening: Opening): Opening {
 }
 
 function furnitureFootprint(item: Furniture) {
-  const [width, depth] = FURNITURE_SIZE[item.kind];
+  const [width, depth, height] = INTERIOR_CATALOG[item.kind].size;
+  const scale = item.scale ?? 1;
   const angle = item.rotation * Math.PI / 180;
   const sin = Math.abs(Math.sin(angle));
   const cos = Math.abs(Math.cos(angle));
-  return { length: width * cos + depth * sin, width: width * sin + depth * cos };
+  return { length: (width * cos + depth * sin) * scale, width: (width * sin + depth * cos) * scale, height: height * scale };
 }
 
 export function furnitureFitsRoom(dimensions: Dimensions, item: Furniture) {
   const footprint = furnitureFootprint(item);
-  return footprint.length <= dimensions.length + 0.002 && footprint.width <= dimensions.width + 0.002;
+  return footprint.length <= dimensions.length + 0.002 && footprint.width <= dimensions.width + 0.002 &&
+    (item.kind === 'Wall art' || footprint.height <= dimensions.height + 0.002);
 }
 
 export function furnitureBounds(dimensions: Dimensions, item: Furniture) {

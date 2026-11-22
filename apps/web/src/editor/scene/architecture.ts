@@ -1,8 +1,9 @@
 import {
   BoxGeometry, EdgesGeometry, Group, LineBasicMaterial, LineSegments, Mesh, MeshStandardMaterial, PlaneGeometry, Vector3,
 } from 'three';
-import { wallSpan, type Dimensions, type Opening, type Room, type Wall } from '@studio/model';
-import { box, type SceneAssets } from './furniture';
+import { WALLS, wallSpan, type Dimensions, type Opening, type Room, type Wall } from '@studio/model';
+import type { SceneAssets } from './furniture';
+import { box } from './primitives';
 import { floorTexture } from './textures';
 
 export const WALL_THICKNESS = 0.16;
@@ -31,6 +32,30 @@ export function createFloor(dimensions: Dimensions, assets: SceneAssets) {
   floor.receiveShadow = true;
   group.add(floor);
   return { group, dispose: () => { disposeGeometry(group); map.dispose(); material.dispose(); } };
+}
+
+export function createCeiling({ length, width, height }: Dimensions) {
+  const group = new Group();
+  const plaster = new MeshStandardMaterial({ color: '#eee9df', roughness: 0.96 });
+  const edge = new MeshStandardMaterial({ color: '#ddd5c7', roughness: 0.92 });
+  const thickness = 0.095;
+  const slab = box(group, plaster, length + WALL_THICKNESS * 2, thickness, width + WALL_THICKNESS * 2,
+    0, height + thickness / 2, 0);
+  slab.castShadow = false;
+
+  // Retain the wall-side section of the slab when the rest is cut away.
+  const rim = new Map<Wall, Mesh>();
+  for (const wall of WALLS) {
+    const normal = wallNormals[wall];
+    const northSouth = normal.z !== 0;
+    const strip = 0.34;
+    const mesh = box(group, edge, northSouth ? length + WALL_THICKNESS * 2 : strip, thickness,
+      northSouth ? strip : width, normal.x * (length / 2 + WALL_THICKNESS - strip / 2),
+      height + thickness / 2, normal.z * (width / 2 + WALL_THICKNESS - strip / 2));
+    mesh.castShadow = false;
+    rim.set(wall, mesh);
+  }
+  return { group, slab, rim, dispose: () => { disposeGeometry(group); plaster.dispose(); edge.dispose(); } };
 }
 
 function createOpening(opening: Opening, a: SceneAssets) {
