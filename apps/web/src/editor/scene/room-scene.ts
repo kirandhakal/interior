@@ -1,5 +1,6 @@
 import {
-  Box3, Box3Helper, Color, DirectionalLight, Group, Mesh, OrthographicCamera, Plane, PlaneGeometry, Raycaster, Scene, ShadowMaterial, Vector2, Vector3,
+  Box3, Box3Helper, Color, DirectionalLight, Group, Mesh, NeutralToneMapping, NoToneMapping, OrthographicCamera, PerspectiveCamera,
+  Plane, PlaneGeometry, Raycaster, Scene, ShadowMaterial, Vector2, Vector3,
   WebGLRenderer, PCFShadowMap, SRGBColorSpace, type Object3D,
 } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -13,11 +14,12 @@ import { createCeilingFinish } from './ceiling-finish';
 import { createAssets, createFurniture, type SceneAssets } from './furniture';
 import { createDaylight, createFixture } from './lighting';
 import { fixturePlacement } from './fixture-placement';
+import type { InteriorPlacement } from '../interior-placement';
 
 type ObjectHit = { type: 'opening' | 'furniture' | 'light' | 'ceilingDecor'; id: string };
 export type Hit = { type: 'wall'; wall: Wall } | ObjectHit;
-export type View = '3D' | 'Top' | 'Ceiling' | 'Ceiling Outside';
-export const isCeilingView = (view: View) => view === 'Ceiling' || view === 'Ceiling Outside';
+export type View = '3D' | 'Top' | 'Ceiling' | 'Ceiling Outside' | 'Interior';
+export const isCeilingView = (view: View) => view === 'Ceiling' || view === 'Ceiling Outside' || view === 'Interior';
 export type Tool = 'Select' | 'Move';
 export type CameraAction = 'in' | 'out' | 'reset';
 
@@ -32,6 +34,7 @@ type SceneState = {
   dragCeilingDecor: boolean;
   onSelect: (selection: Hit) => void;
   onMove: (room: Room, dragStart: Room) => void;
+  onPlaceCeiling?: (placement: InteriorPlacement | undefined) => void;
 };
 
 function getHit(object: Object3D | null): Hit | undefined {
@@ -55,6 +58,7 @@ const straightUpPolar = Math.PI - 0.000001;
 const yAxis = new Vector3(0, 1, 0);
 const emptyDecor: CeilingDecor[] = [];
 const defaultViewport = 7;
+const insideCeilingFill = { Morning: 1.3, Afternoon: 1.3, Evening: 0.95, Night: 0.62 };
 const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export class RoomScene {
@@ -62,6 +66,7 @@ export class RoomScene {
   private readonly scene = new Scene();
   private readonly roomGroup = new Group();
   private readonly camera = new OrthographicCamera(-4, 4, 4, -4, 0.05, 180);
+  private readonly interiorCamera = new PerspectiveCamera(69, 1, 0.035, 180);
   private readonly controls: OrbitControls;
   private readonly assets: SceneAssets;
   private readonly daylight = createDaylight();
@@ -90,7 +95,7 @@ export class RoomScene {
   private lastFrame = 0;
   private width = 1;
   private height = 1;
-  private down?: { pointer: number; x: number; y: number; hit?: ObjectHit; start: Room };
+  private down?: { pointer: number; x: number; y: number; hit?: ObjectHit; start: Room; look?: { pitch: number; yaw: number; dragging: boolean } };
   private dragOffset = new Vector3();
   private readonly selectionBox = new Box3();
   private readonly selectionHelper = new Box3Helper(this.selectionBox, new Color('#53634a'));
@@ -114,6 +119,7 @@ export class RoomScene {
     this.ground.position.y = -0.246;
     this.ground.receiveShadow = true;
     this.selectionHelper.visible = false;
+    this.interiorCamera.rotation.order = 'YXZ';
     this.ceilingFill.position.set(3, -5, 4);
     this.scene.add(this.roomGroup, this.daylight.group, this.ceilingFill, this.ground, this.selectionHelper);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -133,6 +139,7 @@ export class RoomScene {
     host.addEventListener('pointermove', this.pointerMove);
     host.addEventListener('pointerup', this.pointerUp);
     host.addEventListener('pointercancel', this.pointerCancel);
+    host.addEventListener('wheel', this.interiorWheel, { passive: false });
     this.update(state);
     this.resize();
   }
@@ -157,6 +164,8 @@ export class RoomScene {
   private frameCamera() {
     const { length, width, height } = this.state.room.dimensions;
     const aspect = this.width / this.height;
+    this.interiorCamera.aspect = aspect;
+    this.interiorCamera.updateProjectionMatrix();
     const span = Math.hypot(length, width);
     const { view } = this.state;
     const scale = view === 'Top' || view === 'Ceiling'
@@ -172,8 +181,17 @@ export class RoomScene {
 
   private setCamera(instant: boolean) {
     const { length, width, height } = this.state.room.dimensions;
-    const scale = Math.max(length, width, defaultViewport);
     const view = this.state.view;
+    if (view === 'Interior') {
+      this.interiorCamera.position.set(length * 0.38, Math.min(height * 0.5, 1.55), width * 0.39);
+      this.interiorCamera.lookAt(-length * 0.12, height * 0.53, -width * 0.22);
+      this.interiorCamera.zoom = 1;
+      this.cameraUntil = 0;
+      this.frameCamera();
+      this.schedule();
+      return;
+    }
+    const scale = Math.max(length, width, defaultViewport);
     if (view === 'Ceiling') {
       this.viewTarget.set(0, height, 0);
       this.desiredPosition.set(0, 0.04, 0.00001);
@@ -219,11 +237,23 @@ export class RoomScene {
 
   private stopCamera = () => { this.cameraUntil = 0; };
 
+  private get activeCamera() {
+    return this.state.view === 'Interior' ? this.interiorCamera : this.camera;
+  }
+
+  private interiorWheel = (event: WheelEvent) => {
+    if (this.state.view !== 'Interior' || !this.state.interactive || !event.deltaY) return;
+    event.preventDefault();
+    this.act(event.deltaY < 0 ? 'in' : 'out');
+  };
+
   act(action: CameraAction) {
     if (action === 'reset') { this.setCamera(false); return; }
-    const zoom = this.camera.zoom * (action === 'in' ? 1.22 : 1 / 1.22);
-    this.camera.zoom = Math.min(this.controls.maxZoom, Math.max(this.controls.minZoom, zoom));
-    this.camera.updateProjectionMatrix();
+    const camera = this.activeCamera;
+    const zoom = camera.zoom * (action === 'in' ? 1.22 : 1 / 1.22);
+    const [minZoom, maxZoom] = this.state.view === 'Interior' ? [0.75, 2.6] : [this.controls.minZoom, this.controls.maxZoom];
+    camera.zoom = Math.min(maxZoom, Math.max(minZoom, zoom));
+    camera.updateProjectionMatrix();
     this.schedule();
   }
 
@@ -236,15 +266,18 @@ export class RoomScene {
     const sameLayout = oldRoom && !resized;
     const ceilingView = isCeilingView(state.view);
     const straightUp = state.view === 'Ceiling';
+    const inside = state.view === 'Interior';
     this.shadowDirty ||= resized || state.view !== previous?.view || room.ceilingDecor !== oldRoom?.ceilingDecor || room.openings !== oldRoom?.openings ||
       room.furniture !== oldRoom?.furniture || room.daylight !== oldRoom?.daylight;
     this.state = state;
     this.previous = state;
-    this.controls.enabled = state.interactive;
+    this.renderer.toneMapping = inside ? NeutralToneMapping : NoToneMapping;
+    this.controls.enabled = state.interactive && !inside;
     this.controls.enableRotate = state.view === '3D' || state.view === 'Ceiling Outside';
     this.controls.minPolarAngle = straightUp ? straightUpPolar : ceilingView ? Math.PI / 2 + 0.24 : 0.0001;
     this.controls.maxPolarAngle = straightUp ? straightUpPolar : ceilingView ? Math.PI - 0.18 : Math.PI / 2 - 0.055;
     this.ceilingFill.visible = ceilingView;
+    this.ceilingFill.intensity = straightUp ? insideCeilingFill[room.daylight] : inside ? insideCeilingFill[room.daylight] * 0.43 : 0.36;
     if (resized) {
       if (this.floor) {
         this.roomGroup.remove(this.floor.group);
@@ -366,7 +399,8 @@ export class RoomScene {
       else this.lightUntil = performance.now() + 450;
     }
     if (switchedRoom || state.view !== previous?.view || resized) {
-      this.setCamera(!previous || previous.view === 'Ceiling' || ceilingView !== isCeilingView(previous.view));
+      if (state.view !== previous?.view) this.down = undefined;
+      this.setCamera(!previous || previous.view === 'Ceiling' || previous.view === 'Interior' || ceilingView !== isCeilingView(previous.view));
     }
     else if (!this.down && state.selection) {
       const hit = state.selection;
@@ -401,19 +435,24 @@ export class RoomScene {
       this.shadowDirty = true;
       if (progress === 1) this.lightUntil = 0;
     }
-    const moved = this.controls.update();
+    const inside = this.state.view === 'Interior';
+    const moved = !inside && this.controls.update();
     const isTop = this.state.view === 'Top' && this.controls.getPolarAngle() < 0.2;
     const isCeiling = isCeilingView(this.state.view);
+    const ceilingOnly = isCeiling && !inside;
     const straightUp = this.state.view === 'Ceiling';
     this.ground.visible = !isCeiling;
-    if (this.floor) this.floor.group.visible = !isCeiling;
-    if (this.ceiling) this.ceiling.slab.visible = isCeiling;
+    if (this.floor) this.floor.group.visible = !ceilingOnly;
+    if (this.ceiling) {
+      this.ceiling.slab.visible = isCeiling;
+      this.ceiling.boundary.visible = isCeiling && !!this.state.onPlaceCeiling;
+    }
     if (this.ceilingFinish) this.ceilingFinish.group.visible = isCeiling;
-    for (const item of this.furniture.values()) item.group.visible = !isCeiling;
+    for (const item of this.furniture.values()) item.group.visible = !ceilingOnly;
     for (const item of this.ceilingDecor.values()) item.group.visible = !isTop;
     this.localPoint.copy(this.camera.position).sub(this.controls.target).setY(0).normalize();
     for (const [wall, mesh] of this.walls) {
-      const shown = isTop || straightUp || wallNormals[wall].dot(this.localPoint) < 0.03;
+      const shown = isTop || straightUp || inside || wallNormals[wall].dot(this.localPoint) < 0.03;
       const height = isTop ? 0.065 : 1;
       if (mesh.group.visible !== shown || mesh.group.scale.y !== height) this.shadowDirty = true;
       mesh.group.visible = shown;
@@ -423,7 +462,7 @@ export class RoomScene {
     }
     for (const light of this.state.room.lights) {
       const fixture = this.lights.get(light.id);
-      if (fixture) fixture.model.visible = isCeiling ? light.mount === 'Ceiling'
+      if (fixture) fixture.model.visible = ceilingOnly ? light.mount === 'Ceiling'
         : !isWallMount(light.mount) || !!this.walls.get(light.mount)?.group.visible;
     }
     const selected = this.state.selection;
@@ -442,7 +481,7 @@ export class RoomScene {
       this.renderer.shadowMap.needsUpdate = true;
       this.shadowDirty = false;
     }
-    this.renderer.render(this.scene, this.camera);
+    this.renderer.render(this.scene, this.activeCamera);
     this.animation = 0;
     if (moved || this.cameraUntil || this.lightUntil) this.schedule();
   };
@@ -450,7 +489,9 @@ export class RoomScene {
   private cast(event: { clientX: number; clientY: number }) {
     const bounds = this.host.getBoundingClientRect();
     this.cursor.set((event.clientX - bounds.left) / bounds.width * 2 - 1, -(event.clientY - bounds.top) / bounds.height * 2 + 1);
-    this.ray.setFromCamera(this.cursor, this.camera);
+    const camera = this.activeCamera;
+    camera.updateMatrixWorld();
+    this.ray.setFromCamera(this.cursor, camera);
   }
 
   private pick(event: PointerEvent) {
@@ -511,8 +552,14 @@ export class RoomScene {
       this.down = undefined;
       return;
     }
-    const { room, tool, dragFixtures, dragInterior, dragCeilingDecor, view } = this.state;
+    const { room, tool, dragFixtures, dragInterior, dragCeilingDecor, view, onPlaceCeiling } = this.state;
     this.down = { pointer: event.pointerId, x: event.clientX, y: event.clientY, start: room };
+    if (view === 'Interior') {
+      const { x: pitch, y: yaw } = this.interiorCamera.rotation;
+      this.down.look = { pitch, yaw, dragging: false };
+      this.renderer.domElement.setPointerCapture(event.pointerId);
+    }
+    if (onPlaceCeiling) return;
     if (tool !== 'Move' && !dragFixtures && !dragInterior && !dragCeilingDecor) return;
     const hit = this.pick(event);
     if (!hit || hit.type === 'wall') return;
@@ -558,8 +605,19 @@ export class RoomScene {
 
   private pointerMove = (event: PointerEvent) => {
     const down = this.down;
-    if (!down?.hit || down.pointer !== event.pointerId) return;
-    if (Math.hypot(event.clientX - down.x, event.clientY - down.y) < 3) return;
+    if (!down || down.pointer !== event.pointerId) return;
+    const dx = event.clientX - down.x;
+    const dy = event.clientY - down.y;
+    const distance = Math.hypot(dx, dy);
+    if (!down.hit) {
+      if (down.look && (distance >= 6 || down.look.dragging)) {
+        down.look.dragging = true;
+        this.interiorCamera.rotation.set(Math.max(-1.36, Math.min(1.36, down.look.pitch + dy * 0.0045)), down.look.yaw + dx * 0.0045, 0);
+        this.schedule();
+      }
+      return;
+    }
+    if (distance < 3) return;
     this.cast(event);
     if (!this.ray.ray.intersectPlane(this.plane, this.point)) return;
     const hit = down.hit;
@@ -591,7 +649,11 @@ export class RoomScene {
     const down = this.down;
     if (!down || down.pointer !== event.pointerId) return;
     this.down = undefined;
-    if (!down.hit && Math.hypot(event.clientX - down.x, event.clientY - down.y) < 6) {
+    if (!down.hit && !down.look?.dragging && Math.hypot(event.clientX - down.x, event.clientY - down.y) < 6) {
+      if (this.state.onPlaceCeiling) {
+        this.state.onPlaceCeiling(this.dropCeilingDecor(event.clientX, event.clientY));
+        return;
+      }
       const hit = this.pick(event);
       if (hit) this.state.onSelect(hit);
     }
@@ -609,6 +671,7 @@ export class RoomScene {
     this.host.removeEventListener('pointermove', this.pointerMove);
     this.host.removeEventListener('pointerup', this.pointerUp);
     this.host.removeEventListener('pointercancel', this.pointerCancel);
+    this.host.removeEventListener('wheel', this.interiorWheel);
     this.renderer.domElement.removeEventListener('webglcontextlost', this.contextLost);
     this.renderer.domElement.removeEventListener('webglcontextrestored', this.restoreContext);
     this.renderer.domElement.remove();

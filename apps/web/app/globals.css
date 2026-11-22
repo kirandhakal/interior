@@ -177,6 +177,7 @@ input:not([type="range"], [type="color"]), select {
   overflow-wrap: anywhere;
 }
 .workspace-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; margin-bottom: .1rem; }
+.workspace-actions .segmented { flex-wrap: wrap; }
 .undo-tools { display: flex; align-items: center; gap: .14rem; }
 .segmented {
   display: flex;
@@ -226,6 +227,7 @@ input:not([type="range"], [type="color"]), select {
 .scene-host[data-tool="Select"] > canvas { cursor: grab; }
 .scene-host[data-tool="Move"] > canvas { cursor: move; }
 .scene-host > canvas:active { cursor: grabbing; }
+.scene-host[data-placing="true"] > canvas { cursor: crosshair; }
 .scene-error { display: grid; height: 100%; padding: 3rem 2rem; place-content: center; justify-items: center; gap: .45rem; color: var(--muted); text-align: center; }
 .scene-error p { max-width: 25rem; font-size: .9rem; }
 .scene-tools, .scene-camera {
@@ -254,6 +256,33 @@ input:not([type="range"], [type="color"]), select {
 .scene-selection { top: .99rem; right: .88rem; border: 1px solid #dad7ca; border-radius: .38rem; padding: .37rem .5rem; background: #fffdf8e8; }
 .scene-selection > span { display: block; width: .76rem; height: .76rem; border: 1px solid #343a3240; border-radius: .15rem; background: var(--paint-color); }
 .scene-hint { bottom: .96rem; left: .96rem; padding: .31rem .42rem; border-radius: .28rem; background: #f6f4ebd9; }
+
+.ceiling-toolbar {
+  container-type: inline-size;
+  display: grid;
+  gap: .48rem;
+  margin-bottom: .7rem;
+  padding: .7rem .8rem;
+  border: 1px solid var(--line);
+  border-radius: .57rem;
+  background: var(--paper);
+}
+.ceiling-toolbar-controls {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) auto minmax(8rem, .85fr);
+  align-items: end;
+  gap: .54rem;
+}
+.ceiling-toolbar-controls > .button { min-height: 2.625rem; white-space: nowrap; }
+.ceiling-toolbar-status { display: flex; align-items: center; flex-wrap: wrap; gap: .2rem .48rem; min-height: 1.9rem; color: var(--muted); font-size: .83rem; }
+.ceiling-toolbar-status p { margin: 0; flex: 1 1 auto; }
+.ceiling-toolbar-status[data-placing="true"] { color: var(--olive); }
+.ceiling-toolbar-status .button, .ceiling-toolbar-status .icon-button { min-height: 1.9rem; height: 1.9rem; padding: .16rem .42rem; }
+
+@container (max-width: 390px) {
+  .ceiling-toolbar-controls { grid-template-columns: minmax(0, 1fr) auto; }
+  .ceiling-toolbar-controls > .field:last-child { grid-column: 1 / -1; }
+}
 
 .daylight-strip {
   display: flex;

@@ -13,7 +13,9 @@ import { IconButton } from '@/components/ui';
 import { api, ApiError, errorMessage } from '@/projects/api';
 import { AuthDialog, ProjectDialog } from '@/projects/dialogs';
 import { readLocalProjects, saveLocalProject } from '@/projects/local';
+import type { CeilingItem } from './ceiling/catalog';
 import { CeilingPanel } from './ceiling/panel';
+import { CeilingToolbar } from './ceiling/toolbar';
 import { useProjectHistory } from './history';
 import type { InteriorPlacement } from './interior-placement';
 import { newFixture, type LightPlacement } from './lighting/fixtures';
@@ -71,6 +73,9 @@ export function Editor() {
   const [selection, setSelection] = useState<Hit | null>(initialSelection);
   const [view, setView] = useState<View>('3D');
   const ceilingView = isCeilingView(view);
+  const [ceilingItem, setCeilingItem] = useState<CeilingItem>({ type: 'decor', kind: 'Ceiling fan' });
+  const [placingCeiling, setPlacingCeiling] = useState(false);
+  const [placementMissed, setPlacementMissed] = useState(false);
   const [tool, setTool] = useState<Tool>('Select');
   const [command, setCommand] = useState<{ action: CameraAction }>();
   const [dialog, setDialog] = useState<Dialog>();
@@ -90,6 +95,7 @@ export function Editor() {
     setWall(DEFAULT_WALL);
     setSelection(initialSelection);
     setTool('Select');
+    setPlacingCeiling(false);
   }, []);
 
   const load = useCallback((saved: SavedProject, storage: Storage) => {
@@ -129,6 +135,10 @@ export function Editor() {
 
   useEffect(() => {
     function handleUndo(event: KeyboardEvent) {
+      if (event.key === 'Escape' && placingCeiling && !dialog) {
+        setPlacingCeiling(false);
+        return;
+      }
       if ((!event.metaKey && !event.ctrlKey) || event.altKey || dialog ||
         (event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable=true]'))) return;
       const key = event.key.toLowerCase();
@@ -138,7 +148,7 @@ export function Editor() {
     }
     window.addEventListener('keydown', handleUndo);
     return () => window.removeEventListener('keydown', handleUndo);
-  }, [dialog, dispatch]);
+  }, [dialog, dispatch, placingCeiling]);
 
   const edit = (update: (project: Project) => Project, group?: string | Room) => {
     touched.current = true;
@@ -175,6 +185,7 @@ export function Editor() {
 
   const changeView = (next: View) => {
     setView(next);
+    if (!isCeilingView(next)) setPlacingCeiling(false);
     if (isCeilingView(next)) {
       setTab('Ceiling');
       if (selection?.type !== 'ceilingDecor' && !(selection?.type === 'light' && room.lights.some(light => light.id === selection.id && light.mount === 'Ceiling'))) {
@@ -225,6 +236,24 @@ export function Editor() {
     changeRoom({ ...room, ceilingDecor: [...decor, item] });
     if (!ceilingView) setView('Ceiling');
     sceneSelect({ type: 'ceilingDecor', id: item.id });
+  };
+
+  const chooseCeilingItem = (item: CeilingItem) => {
+    setCeilingItem(item);
+    setPlacementMissed(false);
+  };
+
+  const startCeilingPlacement = (item: CeilingItem) => {
+    chooseCeilingItem(item);
+    setPlacingCeiling(true);
+    setTab('Ceiling');
+    if (!ceilingView) setView('Ceiling');
+  };
+
+  const placeCeilingItem = (point?: InteriorPlacement) => {
+    if (ceilingItem.type === 'decor') addCeilingDecor(ceilingItem.kind, point);
+    else addFixture(ceilingItem.kind, point && { ...point, y: room.dimensions.height, mount: 'Ceiling' });
+    setPlacingCeiling(false);
   };
 
   async function save(copy = false) {
@@ -307,6 +336,7 @@ export function Editor() {
           <h2>Edit room</h2>
           {tabs.map(({ name, icon: Icon }) => <button key={name} type="button" aria-pressed={tab === name} onClick={() => {
             setTab(name);
+            if (name !== 'Ceiling') setPlacingCeiling(false);
             if (name === 'Paint') selectWall(wall);
             if (name === 'Ceiling' && !ceilingView) changeView('Ceiling');
           }}><Icon size={18} /><span>{name}</span></button>)}
@@ -334,26 +364,42 @@ export function Editor() {
             <ViewSwitch view={view} onChange={changeView} />
           </div>
         </header>
+        {ceilingView && <CeilingToolbar room={room} item={ceilingItem} placing={placingCeiling} missed={placementMissed} inside={view === 'Interior'}
+          onChoose={chooseCeilingItem} onStart={() => startCeilingPlacement(ceilingItem)}
+          onFinish={ceilingFinish => changeRoom({ ...room, ceilingFinish })}
+          onAutoPlace={() => placeCeilingItem()} onCancel={() => setPlacingCeiling(false)}
+          onToggleInterior={() => changeView(view === 'Interior' ? 'Ceiling' : 'Interior')} />}
         <div className="scene-stage">
           <Preview room={room} view={view} tool={tool} selection={selection} command={command} interactive
             dragFixtures={tab === 'Lighting' || tab === 'Ceiling'} dragInterior={tab === 'Furniture'} dragCeilingDecor={tab === 'Ceiling'}
+            onPlaceCeiling={ceilingView && placingCeiling ? point => {
+              if (point) placeCeilingItem(point);
+              else setPlacementMissed(true);
+            } : undefined}
             onSelect={sceneSelect} onMove={changeRoom} onDropFixture={(kind, placement) => {
-              if (placement) addFixture(kind, placement);
+              if (placement) {
+                setPlacingCeiling(false);
+                addFixture(kind, placement);
+              }
               else notify(ceilingView ? 'Drop a ceiling-mounted fixture onto the ceiling.'
                 : kind === 'Wall sconce' ? 'Drop the sconce onto a visible wall in 3D view.' : 'Drop the fixture inside the room.', true);
             }} onDropInterior={(kind, placement) => {
               if (placement) addInterior(kind, placement);
               else notify('Drop the item onto the floor in 3D or Top view.', true);
             }} onDropCeilingDecor={(kind, placement) => {
-              if (placement) addCeilingDecor(kind, placement);
+              if (placement) {
+                setPlacingCeiling(false);
+                addCeilingDecor(kind, placement);
+              }
               else notify('Drop the item onto the ceiling surface.', true);
             }} />
-          <SceneToolbar tool={tool} onTool={setTool} onCamera={action => setCommand({ action })} />
+          <SceneToolbar tool={tool} onTool={next => { setTool(next); setPlacingCeiling(false); }} onCamera={action => setCommand({ action })} />
           {isWall && view === '3D' && <span className="scene-selection"><span style={colorStyle(wallHex)} /> {WALL_LABELS[wall]}</span>}
-          <span className="scene-hint">{view === 'Ceiling' ? 'Looking straight up · Drag decor to move it'
-            : view === 'Ceiling Outside' ? 'Drag empty space to orbit · Drag decor to move it' : tab === 'Lighting' ? 'Drag a fixture to move it'
+          {!placingCeiling && <span className="scene-hint">{view === 'Ceiling' ? 'Drag an item to reposition it'
+            : view === 'Ceiling Outside' ? 'Drag empty space to orbit · Drag decor to move it'
+            : view === 'Interior' ? 'Drag empty space to look around' : tab === 'Lighting' ? 'Drag a fixture to move it'
             : tab === 'Furniture' || tool === 'Move' ? 'Drag an object to move it'
-            : view === '3D' ? 'Drag to orbit · Scroll to zoom' : 'Scroll or pinch to zoom'}</span>
+            : view === '3D' ? 'Drag to orbit · Scroll to zoom' : 'Scroll or pinch to zoom'}</span>}
         </div>
         <div className="daylight-strip">
           <div className="daylight-label"><Sun size={18} /><span>Daylight</span></div>
@@ -373,7 +419,8 @@ export function Editor() {
         <div className="inspector-content" key={tab + room.id}>
           {tab === 'Paint' ? <PaintPanel key={wall} room={room} wall={wall} onWall={selectWall} onChange={changeRoom} onCompare={() => setDialog('compare')} />
             : tab === 'Ceiling' ? <CeilingPanel room={room} selection={selection} inCeilingView={ceilingView}
-              onAddDecor={addCeilingDecor} onAddFixture={addFixture} onSelect={setSelection} onChange={(next, group) => {
+              onAddDecor={kind => startCeilingPlacement({ type: 'decor', kind })} onAddFixture={kind => startCeilingPlacement({ type: 'light', kind })}
+              onSelect={hit => { setSelection(hit); setPlacingCeiling(false); }} onChange={(next, group) => {
                 if (next.ceilingFinish !== room.ceilingFinish && !ceilingView) setView('Ceiling');
                 changeRoom(next, group);
               }} />

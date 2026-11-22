@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { LampCeiling, Plus } from 'lucide-react';
 import {
   CEILING_CATALOG, CEILING_DECOR, CEILING_DECOR_DRAG_TYPE, CEILING_DECOR_SCALE, CEILING_FINISHES,
-  FIXTURE_MOUNTS, LIGHTS, LIMITS, ceilingDecorBounds, clamp, fitCeilingDecor,
+  LIMITS, ceilingDecorBounds, clamp, fitCeilingDecor,
   type CeilingDecor, type CeilingDecorKind, type LightKind, type Room,
 } from '@studio/model';
 import { NumberField, RangeField, SelectField } from '@/components/ui';
@@ -12,9 +12,9 @@ import { FIXTURE_DRAG_TYPE } from '../lighting/fixtures';
 import { FixtureSettings } from '../lighting/panel';
 import { ObjectList } from '../object-list';
 import type { Hit } from '../scene/room-scene';
+import { ceilingLights } from './catalog';
 
 const categories = ['Fans', 'Lighting', 'Natural', 'Patterns & textures', 'Party', 'Fabrics'] as const;
-const ceilingLights = LIGHTS.filter(kind => FIXTURE_MOUNTS[kind].includes('Ceiling'));
 
 export function CeilingPanel({ room, selection, inCeilingView, onAddDecor, onAddFixture, onSelect, onChange }: {
   room: Room;
@@ -59,7 +59,7 @@ export function CeilingPanel({ room, selection, inCeilingView, onAddDecor, onAdd
         value={room.ceilingFinish ?? 'Plain plaster'} onChange={ceilingFinish => onChange({ ...room, ceilingFinish })} />
         : <>
           <p className="empty-inline">{atLimit ? 'This room has reached the limit for these items.'
-            : inCeilingView ? 'Click to add an item, or drop it onto the ceiling.' : 'Click an item to add it and open Ceiling view.'}</p>
+            : inCeilingView ? 'Choose an item and click the ceiling to place it, or drag it onto the ceiling.' : 'Choose an item to place it in Ceiling view.'}</p>
           <div className="two-fields interior-catalog" role="group" aria-label="Available ceiling items">
             {lighting ? ceilingLights.map(kind => addButton(kind, FIXTURE_DRAG_TYPE, () => onAddFixture(kind)))
               : CEILING_DECOR.filter(kind => CEILING_CATALOG[kind].category === category)

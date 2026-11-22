@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Box, Hand, LampCeiling, Maximize, Minus, MousePointer2, Orbit, Plus, Scan } from 'lucide-react';
+import { Armchair, Box, Hand, LampCeiling, Maximize, Minus, MousePointer2, Orbit, Plus, Scan } from 'lucide-react';
 import { CEILING_DECOR, CEILING_DECOR_DRAG_TYPE, FURNITURE, LIGHTS, type CeilingDecorKind, type FurnitureKind, type LightKind, type Room } from '@studio/model';
 import { IconButton, Segmented } from '@/components/ui';
 import { INTERIOR_DRAG_TYPE, type InteriorPlacement } from '../interior-placement';
@@ -22,6 +22,7 @@ type PreviewProps = {
   command?: { action: CameraAction };
   onSelect?: (selection: Hit) => void;
   onMove?: (room: Room, dragStart: Room) => void;
+  onPlaceCeiling?: (placement: InteriorPlacement | undefined) => void;
   onDropFixture?: (kind: LightKind, placement: LightPlacement | undefined) => void;
   onDropInterior?: (kind: FurnitureKind, placement: InteriorPlacement | undefined) => void;
   onDropCeilingDecor?: (kind: CeilingDecorKind, placement: InteriorPlacement | undefined) => void;
@@ -29,13 +30,13 @@ type PreviewProps = {
 
 export function Preview({
   room, view, tool = 'Select', selection = null, interactive = false, dragFixtures = false, dragInterior = false, dragCeilingDecor = false, command,
-  onSelect = doNothing, onMove = doNothing, onDropFixture, onDropInterior, onDropCeilingDecor,
+  onSelect = doNothing, onMove = doNothing, onPlaceCeiling, onDropFixture, onDropInterior, onDropCeilingDecor,
 }: PreviewProps) {
   const host = useRef<HTMLDivElement>(null);
   const instance = useRef<RoomScene>(null);
   const [error, setError] = useState(false);
   const [dropOver, setDropOver] = useState(false);
-  const current = { room, view, tool, selection, interactive, dragFixtures, dragInterior, dragCeilingDecor, onSelect, onMove };
+  const current = { room, view, tool, selection, interactive, dragFixtures, dragInterior, dragCeilingDecor, onSelect, onMove, onPlaceCeiling };
   const latest = useRef(current);
 
   useLayoutEffect(() => {
@@ -58,7 +59,7 @@ export function Preview({
     if (command) instance.current?.act(command.action);
   }, [command]);
 
-  return <div className="scene-host" data-tool={tool} data-drop-over={dropOver} ref={host}
+  return <div className="scene-host" data-tool={tool} data-drop-over={dropOver} data-placing={!!onPlaceCeiling} ref={host}
     onDragOver={event => {
       const types = event.dataTransfer.types;
       if (error || !((onDropFixture && types.includes(FIXTURE_DRAG_TYPE)) ||
@@ -101,9 +102,9 @@ export function Preview({
 }
 
 export function ViewSwitch({ view, onChange, allowCeiling = true }: { view: View; onChange: (view: View) => void; allowCeiling?: boolean }) {
-  return <Segmented label="Camera view" value={view} values={allowCeiling ? ['3D', 'Top', 'Ceiling', 'Ceiling Outside'] : ['3D', 'Top']} onChange={onChange}
+  return <Segmented label="Camera view" value={view} values={allowCeiling ? ['3D', 'Top', 'Ceiling', 'Ceiling Outside', 'Interior'] : ['3D', 'Top']} onChange={onChange}
     render={value => {
-      const Icon = value === '3D' ? Box : value === 'Top' ? Scan : value === 'Ceiling' ? LampCeiling : Orbit;
+      const Icon = value === '3D' ? Box : value === 'Top' ? Scan : value === 'Ceiling' ? LampCeiling : value === 'Interior' ? Armchair : Orbit;
       return <><Icon size={15} /><span>{value}<span className="sr-only"> view</span></span></>;
     }} />;
 }

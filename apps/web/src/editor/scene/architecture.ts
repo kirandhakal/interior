@@ -1,5 +1,5 @@
 import {
-  BoxGeometry, EdgesGeometry, Group, LineBasicMaterial, LineSegments, Mesh, MeshStandardMaterial, PlaneGeometry, Vector3,
+  BoxGeometry, BufferGeometry, EdgesGeometry, Group, LineBasicMaterial, LineSegments, Mesh, MeshStandardMaterial, PlaneGeometry, Vector3,
 } from 'three';
 import { WALLS, wallSpan, type Dimensions, type Opening, type Room, type Wall } from '@studio/model';
 import type { SceneAssets } from './furniture';
@@ -43,6 +43,17 @@ export function createCeiling({ length, width, height }: Dimensions) {
     0, height + thickness / 2, 0);
   slab.castShadow = false;
 
+  const corners = [
+    new Vector3(-length / 2, height, -width / 2), new Vector3(length / 2, height, -width / 2),
+    new Vector3(length / 2, height, width / 2), new Vector3(-length / 2, height, width / 2),
+  ];
+  const edges = corners.flatMap((point, index) => [point, corners[(index + 1) % corners.length]]);
+  const boundaryStroke = new LineBasicMaterial({ color: '#465a3b', depthTest: false, depthWrite: false });
+  const boundary = new LineSegments(new BufferGeometry().setFromPoints(edges), boundaryStroke);
+  boundary.renderOrder = 2;
+  boundary.visible = false;
+  group.add(boundary);
+
   // Retain the wall-side section of the slab when the rest is cut away.
   const rim = new Map<Wall, Mesh>();
   for (const wall of WALLS) {
@@ -55,7 +66,7 @@ export function createCeiling({ length, width, height }: Dimensions) {
     mesh.castShadow = false;
     rim.set(wall, mesh);
   }
-  return { group, slab, rim, dispose: () => { disposeGeometry(group); plaster.dispose(); edge.dispose(); } };
+  return { group, slab, rim, boundary, dispose: () => { disposeGeometry(group); plaster.dispose(); edge.dispose(); boundaryStroke.dispose(); } };
 }
 
 function createOpening(opening: Opening, a: SceneAssets) {
