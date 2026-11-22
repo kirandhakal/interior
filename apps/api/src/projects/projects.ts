@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository, TypeOrmModule } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { FIXTURE_MOUNTS, fitLight, furnitureBounds, furnitureFitsRoom, hasDisplay, openingFits, type Project, type SavedProject } from '../../../../packages/studio/model';
+import { FIXTURE_MOUNTS, fitCeilingDecor, fitLight, furnitureBounds, furnitureFitsRoom, hasDisplay, openingFits, type Project, type SavedProject } from '../../../../packages/studio/model';
 import { AuthModule, SessionGuard, type AuthRequest } from '../auth/auth';
 import { ProjectEntity } from '../database/entities';
 import { CreateProjectDto, UpdateProjectDto } from './project.dto';
@@ -17,6 +17,14 @@ function checkLayout(project: Project) {
   assertUnique(project.rooms, 'rooms');
   for (const room of project.rooms) {
     for (const kind of ['openings', 'furniture', 'lights', 'options'] as const) assertUnique(room[kind], `${room.name} ${kind}`);
+    const decor = room.ceilingDecor ?? [];
+    assertUnique(decor, `${room.name} ceiling decor`);
+    for (const item of decor) {
+      const fitted = fitCeilingDecor(room.dimensions, item);
+      if (Math.hypot(item.x - fitted.x, item.z - fitted.z) > 0.002) {
+        throw new BadRequestException(`Ceiling decor extends outside ${room.name}.`);
+      }
+    }
     if (room.openings.some(opening => !openingFits(room, opening))) {
       throw new BadRequestException(`Openings in ${room.name} overlap or exceed the wall bounds.`);
     }

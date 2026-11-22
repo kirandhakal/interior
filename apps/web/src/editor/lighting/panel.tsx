@@ -11,7 +11,7 @@ import type { Hit } from '../scene/room-scene';
 import { FIXTURE_DRAG_TYPE } from './fixtures';
 
 const icons = { Bulb: Lightbulb, 'Floor lamp': LampFloor, 'Wall sconce': LampWallDown,
-  'Ceiling light': LampCeiling, Spotlight, 'LED strip': Lamp };
+  'Ceiling light': LampCeiling, Spotlight, 'LED strip': Lamp, Chandelier: LampCeiling, 'Pendant light': LampCeiling, 'Fairy lights': Lightbulb };
 
 export function LightingPanel({ room, selection, onSelect, onChange, onAddFixture }: {
   room: Room;
@@ -52,7 +52,7 @@ export function LightingPanel({ room, selection, onSelect, onChange, onAddFixtur
   </>;
 }
 
-function FixtureSettings({ light, room, onChange }: {
+export function FixtureSettings({ light, room, onChange }: {
   light: Light; room: Room; onChange: (room: Room, historyGroup?: string) => void;
 }) {
   const mount = light.mount ?? 'Free';

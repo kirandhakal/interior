@@ -11,6 +11,9 @@ const defaultLumens: Record<LightKind, number> = {
   'Ceiling light': 950,
   Spotlight: 420,
   'LED strip': 720,
+  Chandelier: 1600,
+  'Pendant light': 800,
+  'Fairy lights': 230,
 };
 
 export function newFixture(room: Room, kind: LightKind, wall: Wall, placement?: LightPlacement): Light {

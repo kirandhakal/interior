@@ -4,6 +4,7 @@ import {
   IsString, IsUUID, Length, Matches, Max, Min, ValidateIf, ValidateNested,
 } from 'class-validator';
 import {
+  CEILING_DECOR, CEILING_DECOR_SCALE, CEILING_FINISHES, type CeilingDecorKind, type CeilingFinish,
   DAYLIGHTS, DIMENSION_BOUNDS, FINISHES, FURNITURE, FURNITURE_SCALE, HEX_COLOR, LIGHTS, LIGHT_MOUNTS, LIMITS, MAX_LIGHT_LUMENS, OPENINGS, WALLS,
   type Daylight, type Finish, type FurnitureKind, type LightKind, type LightMount, type OpeningKind, type Project, type Wall,
 } from '../../../../packages/studio/model';
@@ -79,6 +80,16 @@ class PaintOptionDto {
   @IsDefined() @IsObject() @ValidateNested() @Type(() => WallPaintDto) walls!: WallPaintDto;
 }
 
+class CeilingDecorDto {
+  @Matches(idPattern) id!: string;
+  @IsIn(CEILING_DECOR) kind!: CeilingDecorKind;
+  @number() @Min(-9) @Max(9) x!: number;
+  @number() @Min(-9) @Max(9) z!: number;
+  @number() @Min(0) @Max(360) rotation!: number;
+  @number() @Min(CEILING_DECOR_SCALE.min) @Max(CEILING_DECOR_SCALE.max) scale!: number;
+  @Matches(HEX_COLOR) color!: string;
+}
+
 class RoomDto {
   @Matches(idPattern) id!: string;
   @trimmed() @IsString() @Length(1, LIMITS.name) name!: string;
@@ -89,6 +100,9 @@ class RoomDto {
   @IsArray() @ArrayMaxSize(LIMITS.furniture) @IsObject({ each: true }) @ValidateNested({ each: true }) @Type(() => FurnitureDto) furniture!: FurnitureDto[];
   @IsArray() @ArrayMaxSize(LIMITS.lights) @IsObject({ each: true }) @ValidateNested({ each: true }) @Type(() => LightDto) lights!: LightDto[];
   @IsArray() @ArrayMaxSize(LIMITS.options) @IsObject({ each: true }) @ValidateNested({ each: true }) @Type(() => PaintOptionDto) options!: PaintOptionDto[];
+  @ValidateIf((_room, value) => value !== undefined) @IsIn(CEILING_FINISHES) ceilingFinish?: CeilingFinish;
+  @ValidateIf((_room, value) => value !== undefined) @IsArray() @ArrayMaxSize(LIMITS.ceilingDecor)
+  @IsObject({ each: true }) @ValidateNested({ each: true }) @Type(() => CeilingDecorDto) ceilingDecor?: CeilingDecorDto[];
 }
 
 export class ProjectDto implements Project {

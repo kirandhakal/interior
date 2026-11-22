@@ -456,7 +456,7 @@ input:not([type="range"], [type="color"]), select {
   .room-navigation li button svg { width: 14px; }
   .add-room { width: auto; white-space: nowrap; min-height: 2.13rem; font-size: .78rem; padding-inline: .28rem; gap: .22rem; }
   .add-room svg { width: 14px; }
-  .editor-navigation { grid-column: 1 / -1; grid-row: 3; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .19rem; }
+  .editor-navigation { grid-column: 1 / -1; grid-row: 3; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .19rem; }
   .editor-navigation h2 { display: none; }
   .editor-navigation button { justify-content: center; gap: .24rem; min-height: 2.28rem; padding-inline: .2rem; font-size: .76rem; }
   .editor-navigation button svg { width: 14px; }
@@ -493,9 +493,11 @@ input:not([type="range"], [type="color"]), select {
   .compare-content, .modal-form { padding-inline: .9rem; }
   .comparison-grid h3 { align-self: center; }
 }
+@media (max-width: 465px) {
+  .editor-navigation button svg { display: none; }
+}
 @media (max-width: 355px) {
   .topbar .brand strong, .scene-hint, .dimensions-card > span, .workspace-actions .segmented svg { display: none; }
-  .editor-navigation button svg { display: none; }
   .workspace-heading h1 { font-size: 1.72rem; }
 }
 @media (prefers-reduced-motion: reduce) {

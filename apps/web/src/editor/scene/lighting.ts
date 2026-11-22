@@ -1,6 +1,6 @@
 import {
-  BoxGeometry, Color, CylinderGeometry, DirectionalLight, Group, HemisphereLight, Mesh, MeshStandardMaterial,
-  PointLight, SphereGeometry, SpotLight, Vector3, type BufferGeometry,
+  BoxGeometry, CatmullRomCurve3, Color, CylinderGeometry, DirectionalLight, DoubleSide, Group, HemisphereLight, Mesh, MeshStandardMaterial,
+  PointLight, SphereGeometry, SpotLight, TorusGeometry, TubeGeometry, Vector3, type BufferGeometry,
 } from 'three';
 import { isPointFixture, isWallMount, type Daylight, type Light, type LightKind, type Wall } from '@studio/model';
 
@@ -71,13 +71,18 @@ const beamWidths: Partial<Record<LightKind, number>> = { Spotlight: 0.42, 'Wall 
 function createHousing(kind: LightKind) {
   const body = new Group();
   const frame = new MeshStandardMaterial({ color: '#65645a', roughness: 0.44, metalness: 0.36 });
-  const shade = new MeshStandardMaterial({ color: '#d0baa1', roughness: 0.85 });
+  const shade = new MeshStandardMaterial({ color: '#d0baa1', roughness: 0.85, side: DoubleSide });
   const diffuser = new MeshStandardMaterial({ color: '#f4eadd', roughness: 0.57 });
-  const add = (geometry: BufferGeometry, material: MeshStandardMaterial, y: number) => {
+  const add = (geometry: BufferGeometry, material: MeshStandardMaterial, y: number, x = 0, z = 0) => {
     const mesh = new Mesh(geometry, material);
-    mesh.position.y = y;
+    mesh.position.set(x, y, z);
     mesh.receiveShadow = true;
     body.add(mesh);
+    return mesh;
+  };
+  const suspension = (length: number) => {
+    add(new CylinderGeometry(0.09, 0.08, 0.035, 24), frame, -0.019);
+    add(new CylinderGeometry(0.012, 0.012, length, 12), frame, -length / 2);
   };
   let sourceY = -0.14;
   switch (kind) {
@@ -116,6 +121,38 @@ function createHousing(kind: LightKind) {
       add(new BoxGeometry(0.79, 0.018, 0.055), diffuser, -0.05);
       sourceY = -0.07;
       break;
+    case 'Pendant light':
+      suspension(0.43);
+      add(new CylinderGeometry(0.087, 0.249, 0.196, 36, 1, true), shade, -0.49);
+      add(new SphereGeometry(0.077, 24, 12), diffuser, -0.559);
+      sourceY = -0.63;
+      break;
+    case 'Chandelier':
+      frame.color.set('#947043');
+      suspension(0.56);
+      add(new TorusGeometry(0.305, 0.021, 10, 42), frame, -0.53).rotation.x = Math.PI / 2;
+      for (let i = 0; i < 6; i++) {
+        const angle = Math.PI * i / 3;
+        const x = Math.cos(angle) * 0.305;
+        const z = Math.sin(angle) * 0.305;
+        const arm = new CatmullRomCurve3([new Vector3(0, -0.56, 0), new Vector3(x * 0.63, -0.6, z * 0.63), new Vector3(x, -0.53, z)]);
+        add(new TubeGeometry(arm, 12, 0.013, 6), frame, 0);
+        add(new CylinderGeometry(0.022, 0.027, 0.079, 16), shade, -0.481, x, z);
+        add(new SphereGeometry(0.031, 14, 10), diffuser, -0.422, x, z).scale.y = 1.42;
+      }
+      sourceY = -0.43;
+      break;
+    case 'Fairy lights': {
+      const wire = (x: number) => new Vector3(x, -0.025 - 0.24 * (1 - (x / 0.54) ** 2), 0.075 * Math.cos(x * 5));
+      const curve = new CatmullRomCurve3(Array.from({ length: 13 }, (_, i) => wire(i * 0.09 - 0.54)));
+      add(new TubeGeometry(curve, 28, 0.007, 6), frame, 0);
+      for (let i = 0; i < 11; i++) {
+        const { x, y, z } = wire(i * 0.1 - 0.5);
+        add(new SphereGeometry(0.025, 12, 8), diffuser, y - 0.018, x, z);
+      }
+      sourceY = -0.29;
+      break;
+    }
   }
   return {
     body, diffuser, sourceY,

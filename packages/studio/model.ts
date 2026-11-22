@@ -1,11 +1,14 @@
 import { INTERIOR_CATALOG, type FurnitureKind } from './interior';
+import { CEILING_CATALOG, type CeilingDecor, type CeilingFinish } from './ceiling';
 export { DEFAULT_DISPLAY, FURNITURE, FURNITURE_SCALE, INTERIOR_CATALOG, INTERIOR_CATEGORIES, getDisplay, hasDisplay, type FurnitureKind } from './interior';
+export * from './ceiling';
 
 export const WALLS = ['north', 'east', 'south', 'west'] as const;
 export const FINISHES = ['Matte', 'Eggshell', 'Satin'] as const;
 export const DAYLIGHTS = ['Morning', 'Afternoon', 'Evening', 'Night'] as const;
 export const OPENINGS = ['Door', 'Window'] as const;
-export const LIGHTS = ['Bulb', 'Floor lamp', 'Wall sconce', 'Ceiling light', 'Spotlight', 'LED strip'] as const;
+export const CEILING_LIGHTS = ['Chandelier', 'Pendant light', 'Fairy lights'] as const;
+export const LIGHTS = ['Bulb', 'Floor lamp', 'Wall sconce', 'Ceiling light', 'Spotlight', 'LED strip', ...CEILING_LIGHTS] as const;
 export const LIGHT_MOUNTS = ['Ceiling', 'Floor', 'Free', ...WALLS] as const;
 export const MAX_LIGHT_LUMENS = 20000;
 
@@ -40,6 +43,8 @@ export type Room = {
   furniture: Furniture[];
   lights: Light[];
   options: PaintOption[];
+  ceilingFinish?: CeilingFinish;
+  ceilingDecor?: CeilingDecor[];
 };
 export type Project = { name: string; rooms: Room[] };
 export type SavedProject = Project & { id: string; version: number; updatedAt: string };
@@ -59,18 +64,37 @@ export const FIXTURE_MOUNTS: Record<LightKind, readonly LightMount[]> = {
   'Ceiling light': ['Ceiling', 'Free'],
   Spotlight: ['Ceiling', ...WALLS, 'Free'],
   'LED strip': ['Ceiling', ...WALLS],
+  Chandelier: ['Ceiling'],
+  'Pendant light': ['Ceiling'],
+  'Fairy lights': ['Ceiling'],
 };
 export const isWallMount = (mount: LightMount | undefined): mount is Wall =>
   mount === 'north' || mount === 'east' || mount === 'south' || mount === 'west';
-export const isPointFixture = (kind: LightKind) => kind === 'Bulb' || kind === 'Floor lamp';
+export const isPointFixture = (kind: LightKind) => kind === 'Bulb' || kind === 'Floor lamp' || kind === 'Chandelier' || kind === 'Fairy lights';
 export const lightLumens = (light: Light) => light.lumens ?? Math.round(light.brightness * 0.39 * Math.PI);
 export const DIMENSION_BOUNDS = { length: [1.2, 18], width: [1.2, 18], height: [2, 6] } as const;
-export const LIMITS = { rooms: 30, openings: 18, furniture: 60, lights: 8, options: 12, name: 80 };
+export const LIMITS = { rooms: 30, openings: 18, furniture: 60, lights: 8, ceilingDecor: 24, options: 12, name: 80 };
 export const HEX_COLOR = /^#[\da-f]{6}$/i;
 export const wallSpan = (dimensions: Dimensions, wall: Wall) =>
   wall === 'north' || wall === 'south' ? dimensions.length : dimensions.width;
 export const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 const round = (value: number) => Math.round(value * 1000) / 1000;
+
+export function ceilingDecorBounds(dimensions: Dimensions, item: CeilingDecor) {
+  const [width, depth] = CEILING_CATALOG[item.kind].size;
+  const angle = item.rotation * Math.PI / 180;
+  const sin = Math.abs(Math.sin(angle));
+  const cos = Math.abs(Math.cos(angle));
+  const length = width * cos + depth * sin;
+  const span = width * sin + depth * cos;
+  const scale = Math.min(item.scale, (dimensions.length - 0.04) / length, (dimensions.width - 0.04) / span);
+  return { scale, x: (dimensions.length - length * scale) / 2, z: (dimensions.width - span * scale) / 2 };
+}
+
+export function fitCeilingDecor(dimensions: Dimensions, item: CeilingDecor): CeilingDecor {
+  const { x, z } = ceilingDecorBounds(dimensions, item);
+  return { ...item, x: round(clamp(item.x, -x, x)), z: round(clamp(item.z, -z, z)) };
+}
 
 export function openingFits(room: Room, opening: Opening) {
   const edge = wallSpan(room.dimensions, opening.wall) / 2 - 0.08;
@@ -122,7 +146,8 @@ export function fitFurniture(dimensions: Dimensions, item: Furniture): Furniture
 
 export function fitLight(dimensions: Dimensions, light: Light): Light {
   const mount = light.mount ?? 'Free';
-  const margin = mount === 'Floor' ? 0.24 : light.kind === 'LED strip' ? 0.44 : 0.12;
+  const margin = mount === 'Floor' ? 0.24 : light.kind === 'Fairy lights' ? 0.58
+    : light.kind === 'Chandelier' || light.kind === 'LED strip' ? 0.44 : light.kind === 'Pendant light' ? 0.28 : 0.12;
   const halfLength = dimensions.length / 2;
   const halfWidth = dimensions.width / 2;
   let x = round(clamp(light.x, -halfLength + margin, halfLength - margin));

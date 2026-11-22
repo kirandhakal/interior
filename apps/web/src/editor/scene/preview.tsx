@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Box, Hand, LampCeiling, Maximize, Minus, MousePointer2, Plus, Scan } from 'lucide-react';
-import { FURNITURE, LIGHTS, type FurnitureKind, type LightKind, type Room } from '@studio/model';
+import { CEILING_DECOR, CEILING_DECOR_DRAG_TYPE, FURNITURE, LIGHTS, type CeilingDecorKind, type FurnitureKind, type LightKind, type Room } from '@studio/model';
 import { IconButton, Segmented } from '@/components/ui';
 import { INTERIOR_DRAG_TYPE, type InteriorPlacement } from '../interior-placement';
 import { FIXTURE_DRAG_TYPE, type LightPlacement } from '../lighting/fixtures';
@@ -18,22 +18,24 @@ type PreviewProps = {
   interactive?: boolean;
   dragFixtures?: boolean;
   dragInterior?: boolean;
+  dragCeilingDecor?: boolean;
   command?: { action: CameraAction };
   onSelect?: (selection: Hit) => void;
   onMove?: (room: Room, dragStart: Room) => void;
   onDropFixture?: (kind: LightKind, placement: LightPlacement | undefined) => void;
   onDropInterior?: (kind: FurnitureKind, placement: InteriorPlacement | undefined) => void;
+  onDropCeilingDecor?: (kind: CeilingDecorKind, placement: InteriorPlacement | undefined) => void;
 };
 
 export function Preview({
-  room, view, tool = 'Select', selection = null, interactive = false, dragFixtures = false, dragInterior = false, command,
-  onSelect = doNothing, onMove = doNothing, onDropFixture, onDropInterior,
+  room, view, tool = 'Select', selection = null, interactive = false, dragFixtures = false, dragInterior = false, dragCeilingDecor = false, command,
+  onSelect = doNothing, onMove = doNothing, onDropFixture, onDropInterior, onDropCeilingDecor,
 }: PreviewProps) {
   const host = useRef<HTMLDivElement>(null);
   const instance = useRef<RoomScene>(null);
   const [error, setError] = useState(false);
   const [dropOver, setDropOver] = useState(false);
-  const current = { room, view, tool, selection, interactive, dragFixtures, dragInterior, onSelect, onMove };
+  const current = { room, view, tool, selection, interactive, dragFixtures, dragInterior, dragCeilingDecor, onSelect, onMove };
   const latest = useRef(current);
 
   useLayoutEffect(() => {
@@ -60,6 +62,7 @@ export function Preview({
     onDragOver={event => {
       const types = event.dataTransfer.types;
       if (error || !((onDropFixture && types.includes(FIXTURE_DRAG_TYPE)) ||
+        (view === 'Ceiling' && onDropCeilingDecor && types.includes(CEILING_DECOR_DRAG_TYPE)) ||
         (onDropInterior && types.includes(INTERIOR_DRAG_TYPE)))) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = 'copy';
@@ -73,9 +76,14 @@ export function Preview({
       if (error) return;
       const fixture = event.dataTransfer.getData(FIXTURE_DRAG_TYPE);
       const lightKind = LIGHTS.find(item => item === fixture);
+      const decor = event.dataTransfer.getData(CEILING_DECOR_DRAG_TYPE);
+      const decorKind = CEILING_DECOR.find(item => item === decor);
       if (lightKind && onDropFixture) {
         event.preventDefault();
         onDropFixture(lightKind, instance.current?.dropFixture(lightKind, event.clientX, event.clientY));
+      } else if (decorKind && onDropCeilingDecor) {
+        event.preventDefault();
+        onDropCeilingDecor(decorKind, instance.current?.dropCeilingDecor(event.clientX, event.clientY));
       } else if (onDropInterior) {
         const item = event.dataTransfer.getData(INTERIOR_DRAG_TYPE);
         const furnitureKind = FURNITURE.find(kind => kind === item);

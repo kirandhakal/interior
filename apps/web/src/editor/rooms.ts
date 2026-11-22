@@ -1,5 +1,5 @@
 import {
-  WALLS, fitFurniture, fitLight, fitOpening, furnitureFitsRoom, openingFits,
+  WALLS, fitCeilingDecor, fitFurniture, fitLight, fitOpening, furnitureFitsRoom, openingFits,
   type Dimensions, type Furniture, type FurnitureKind,
   type Opening, type OpeningKind, type Project, type Room, type Wall, type WallPaint,
 } from '@studio/model';
@@ -48,7 +48,8 @@ export function resizeRoom(room: Room, name: string, dimensions: Dimensions): Ro
   if (!updated.openings.every(opening => openingFits(updated, opening))) return;
   const furniture = room.furniture.map(item => fitFurniture(dimensions, item));
   if (furniture.some(item => !furnitureFitsRoom(dimensions, item))) return;
-  return { ...updated, furniture, lights: room.lights.map(light => fitLight(dimensions, light)) };
+  return { ...updated, furniture, lights: room.lights.map(light => fitLight(dimensions, light)),
+    ceilingDecor: room.ceilingDecor?.map(item => fitCeilingDecor(dimensions, item)) };
 }
 
 export function addOpening(room: Room, kind: OpeningKind, wall: Wall): Opening | undefined {

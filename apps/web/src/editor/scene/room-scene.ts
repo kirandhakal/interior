@@ -1,17 +1,20 @@
 import {
-  Box3, Box3Helper, Color, Group, Mesh, OrthographicCamera, Plane, PlaneGeometry, Raycaster, Scene, ShadowMaterial, Vector2, Vector3,
+  Box3, Box3Helper, Color, DirectionalLight, Group, Mesh, OrthographicCamera, Plane, PlaneGeometry, Raycaster, Scene, ShadowMaterial, Vector2, Vector3,
   WebGLRenderer, PCFShadowMap, SRGBColorSpace, type Object3D,
 } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import {
-  WALLS, getDisplay, hasDisplay, fitFurniture, fitLight, fitOpening, isWallMount, openingFits, type LightKind, type Room, type Wall,
+  FIXTURE_MOUNTS, WALLS, getDisplay, hasDisplay, fitCeilingDecor, fitFurniture, fitLight, fitOpening, isWallMount, openingFits,
+  type CeilingDecor, type LightKind, type Room, type Wall,
 } from '@studio/model';
 import { createCeiling, createFloor, createWall, roughness, wallNormals } from './architecture';
+import { createCeilingDecor } from './ceiling-decor';
+import { createCeilingFinish } from './ceiling-finish';
 import { createAssets, createFurniture, type SceneAssets } from './furniture';
 import { createDaylight, createFixture } from './lighting';
 import { fixturePlacement } from './fixture-placement';
 
-type ObjectHit = { type: 'opening' | 'furniture' | 'light'; id: string };
+type ObjectHit = { type: 'opening' | 'furniture' | 'light' | 'ceilingDecor'; id: string };
 export type Hit = { type: 'wall'; wall: Wall } | ObjectHit;
 export type View = '3D' | 'Top' | 'Ceiling';
 export type Tool = 'Select' | 'Move';
@@ -25,6 +28,7 @@ type SceneState = {
   interactive: boolean;
   dragFixtures: boolean;
   dragInterior: boolean;
+  dragCeilingDecor: boolean;
   onSelect: (selection: Hit) => void;
   onMove: (room: Room, dragStart: Room) => void;
 };
@@ -45,8 +49,9 @@ function visible(object: Object3D) {
 
 const threeD = new Vector3(0.81, 0.65, 1);
 const above = new Vector3(0, 1.46, 0.0001);
-const below = new Vector3(0, -1, 0.0001);
+const below = new Vector3(0.72, -1.12, 0.94);
 const yAxis = new Vector3(0, 1, 0);
+const emptyDecor: CeilingDecor[] = [];
 const defaultViewport = 7;
 const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -58,12 +63,15 @@ export class RoomScene {
   private readonly controls: OrbitControls;
   private readonly assets: SceneAssets;
   private readonly daylight = createDaylight();
+  private readonly ceilingFill = new DirectionalLight('#fff5e5', 0.36);
   private readonly ground = new Mesh(new PlaneGeometry(140, 140), new ShadowMaterial({ opacity: 0.17, depthWrite: false }));
   private readonly walls = new Map<Wall, ReturnType<typeof createWall>>();
   private readonly furniture = new Map<string, ReturnType<typeof createFurniture>>();
   private readonly lights = new Map<string, ReturnType<typeof createFixture> & { kind: LightKind }>();
+  private readonly ceilingDecor = new Map<string, ReturnType<typeof createCeilingDecor>>();
   private floor?: ReturnType<typeof createFloor>;
   private ceiling?: ReturnType<typeof createCeiling>;
+  private ceilingFinish?: ReturnType<typeof createCeilingFinish>;
   private previous?: SceneState;
   private state: SceneState;
   private readonly resizeObserver: ResizeObserver;
@@ -104,7 +112,8 @@ export class RoomScene {
     this.ground.position.y = -0.246;
     this.ground.receiveShadow = true;
     this.selectionHelper.visible = false;
-    this.scene.add(this.roomGroup, this.daylight.group, this.ground, this.selectionHelper);
+    this.ceilingFill.position.set(3, -5, 4);
+    this.scene.add(this.roomGroup, this.daylight.group, this.ceilingFill, this.ground, this.selectionHelper);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.19;
@@ -147,10 +156,10 @@ export class RoomScene {
     const { length, width, height } = this.state.room.dimensions;
     const aspect = this.width / this.height;
     const span = Math.hypot(length, width);
-    const scale = this.state.view !== '3D'
+    const scale = this.state.view === 'Top'
       ? Math.max(width * 1.28, length * 1.28 / aspect)
       : Math.max(span * 0.91 + height * 0.2, height * 1.45, span * 1.11 / aspect);
-    const half = scale / 2;
+    const half = scale * (this.state.view === 'Ceiling' ? 0.54 : 0.5);
     this.camera.top = half;
     this.camera.bottom = -half;
     this.camera.left = -half * aspect;
@@ -164,7 +173,7 @@ export class RoomScene {
     const view = this.state.view;
     const ceiling = view === 'Ceiling';
     const direction = ceiling ? below : view === 'Top' ? above : threeD;
-    this.viewTarget.set(0, ceiling ? height : view === 'Top' ? 0 : height * 0.47, 0);
+    this.viewTarget.set(0, view === 'Top' ? 0 : height * (ceiling ? 0.55 : 0.47), 0);
     this.desiredPosition.copy(direction).normalize().multiplyScalar(scale * 2).add(this.viewTarget);
     this.camera.zoom = 1;
     this.frameCamera();
@@ -213,13 +222,16 @@ export class RoomScene {
     const switchedRoom = room.id !== oldRoom?.id;
     const resized = room.dimensions !== oldRoom?.dimensions;
     const sameLayout = oldRoom && !resized;
-    this.shadowDirty ||= resized || room.openings !== oldRoom?.openings ||
+    const ceilingView = state.view === 'Ceiling';
+    this.shadowDirty ||= resized || state.view !== previous?.view || room.ceilingDecor !== oldRoom?.ceilingDecor || room.openings !== oldRoom?.openings ||
       room.furniture !== oldRoom?.furniture || room.daylight !== oldRoom?.daylight;
     this.state = state;
     this.previous = state;
     this.controls.enabled = state.interactive;
-    this.controls.enableRotate = state.view === '3D';
-    this.controls.maxPolarAngle = state.view === 'Ceiling' ? Math.PI - 0.00001 : Math.PI / 2 - 0.055;
+    this.controls.enableRotate = state.view !== 'Top';
+    this.controls.minPolarAngle = ceilingView ? Math.PI / 2 + 0.24 : 0.0001;
+    this.controls.maxPolarAngle = ceilingView ? Math.PI - 0.18 : Math.PI / 2 - 0.055;
+    this.ceilingFill.visible = ceilingView;
     if (resized) {
       if (this.floor) {
         this.roomGroup.remove(this.floor.group);
@@ -232,6 +244,41 @@ export class RoomScene {
       this.floor = createFloor(room.dimensions, this.assets);
       this.ceiling = createCeiling(room.dimensions);
       this.roomGroup.add(this.floor.group, this.ceiling.group);
+    }
+    if (resized || room.ceilingFinish !== oldRoom?.ceilingFinish) {
+      if (this.ceilingFinish) {
+        this.roomGroup.remove(this.ceilingFinish.group);
+        this.ceilingFinish.dispose();
+        this.ceilingFinish = undefined;
+      }
+      if (room.ceilingFinish && room.ceilingFinish !== 'Plain plaster') {
+        this.ceilingFinish = createCeilingFinish(room.dimensions, room.ceilingFinish);
+        this.roomGroup.add(this.ceilingFinish.group);
+      }
+    }
+    if (resized || room.ceilingDecor !== oldRoom?.ceilingDecor) {
+      const decor = room.ceilingDecor ?? emptyDecor;
+      const ids = new Set(decor.map(item => item.id));
+      for (const [id, current] of this.ceilingDecor) {
+        if (ids.has(id)) continue;
+        this.roomGroup.remove(current.group);
+        current.dispose();
+        this.ceilingDecor.delete(id);
+      }
+      for (const item of decor) {
+        let current = this.ceilingDecor.get(item.id);
+        if (!current || current.kind !== item.kind) {
+          if (current) {
+            this.roomGroup.remove(current.group);
+            current.dispose();
+          }
+          current = createCeilingDecor(item.kind);
+          current.group.userData.hit = { type: 'ceilingDecor', id: item.id };
+          this.ceilingDecor.set(item.id, current);
+          this.roomGroup.add(current.group);
+        }
+        current.update(item, room.dimensions);
+      }
     }
     if (room.walls !== oldRoom?.walls || room.openings !== oldRoom?.openings || !sameLayout || previous?.selection !== state.selection) {
       for (const wall of WALLS) {
@@ -348,16 +395,18 @@ export class RoomScene {
     this.ground.visible = !isCeiling;
     if (this.floor) this.floor.group.visible = !isCeiling;
     if (this.ceiling) this.ceiling.slab.visible = isCeiling;
+    if (this.ceilingFinish) this.ceilingFinish.group.visible = isCeiling;
     for (const item of this.furniture.values()) item.group.visible = !isCeiling;
+    for (const item of this.ceilingDecor.values()) item.group.visible = !isTop;
     this.localPoint.copy(this.camera.position).sub(this.controls.target).setY(0).normalize();
     for (const [wall, mesh] of this.walls) {
-      const shown = !isCeiling && (isTop || wallNormals[wall].dot(this.localPoint) < 0.03);
+      const shown = isTop || wallNormals[wall].dot(this.localPoint) < 0.03;
       const height = isTop ? 0.065 : 1;
       if (mesh.group.visible !== shown || mesh.group.scale.y !== height) this.shadowDirty = true;
       mesh.group.visible = shown;
       mesh.group.scale.y = height;
       const rim = this.ceiling?.rim.get(wall);
-      if (rim) rim.visible = shown && !isTop;
+      if (rim) rim.visible = shown && !isTop && !isCeiling;
     }
     for (const light of this.state.room.lights) {
       const fixture = this.lights.get(light.id);
@@ -367,6 +416,7 @@ export class RoomScene {
     const selected = this.state.selection;
     let object: Object3D | undefined;
     if (selected?.type === 'furniture') object = this.furniture.get(selected.id)?.group;
+    if (selected?.type === 'ceilingDecor') object = this.ceilingDecor.get(selected.id)?.group;
     if (selected?.type === 'light') object = this.lights.get(selected.id)?.model;
     if (selected?.type === 'opening') {
       const wall = this.state.room.openings.find(item => item.id === selected.id)?.wall;
@@ -403,6 +453,10 @@ export class RoomScene {
   dropFixture(kind: LightKind, clientX: number, clientY: number) {
     this.cast({ clientX, clientY });
     const { room, view } = this.state;
+    if (view === 'Ceiling') {
+      const point = this.ceilingPoint();
+      return point && FIXTURE_MOUNTS[kind].includes('Ceiling') ? { ...point, y: room.dimensions.height, mount: 'Ceiling' as const } : undefined;
+    }
     if (view === '3D') {
       const walls = [...this.walls.values()].map(wall => wall.group);
       for (const intersection of this.ray.intersectObjects(walls, true)) {
@@ -414,8 +468,19 @@ export class RoomScene {
         if (hit?.type === 'opening') break;
       }
     }
-    const placement = fixturePlacement(this.ray.ray, room.dimensions, kind);
-    return view === 'Ceiling' && placement?.mount !== 'Ceiling' ? undefined : placement;
+    return fixturePlacement(this.ray.ray, room.dimensions, kind);
+  }
+
+  private ceilingPoint() {
+    const { length, width, height } = this.state.room.dimensions;
+    const point = this.ray.ray.intersectPlane(new Plane(yAxis, -height), this.point);
+    if (point && Math.abs(point.x) <= length / 2 && Math.abs(point.z) <= width / 2) return { x: point.x, z: point.z };
+  }
+
+  dropCeilingDecor(clientX: number, clientY: number) {
+    if (this.state.view !== 'Ceiling') return;
+    this.cast({ clientX, clientY });
+    return this.ceilingPoint();
   }
 
   dropInterior(clientX: number, clientY: number) {
@@ -433,12 +498,13 @@ export class RoomScene {
       this.down = undefined;
       return;
     }
-    const { room, tool, dragFixtures, dragInterior, view } = this.state;
+    const { room, tool, dragFixtures, dragInterior, dragCeilingDecor, view } = this.state;
     this.down = { pointer: event.pointerId, x: event.clientX, y: event.clientY, start: room };
-    if (tool !== 'Move' && !dragFixtures && !dragInterior) return;
+    if (tool !== 'Move' && !dragFixtures && !dragInterior && !dragCeilingDecor) return;
     const hit = this.pick(event);
     if (!hit || hit.type === 'wall') return;
-    if (tool !== 'Move' && !((hit.type === 'light' && dragFixtures) || (hit.type === 'furniture' && dragInterior))) return;
+    if (tool !== 'Move' && !((hit.type === 'light' && dragFixtures) || (hit.type === 'furniture' && dragInterior) ||
+      (hit.type === 'ceilingDecor' && dragCeilingDecor))) return;
 
     if (hit.type === 'opening') {
       if (view === 'Top') return;
@@ -457,6 +523,11 @@ export class RoomScene {
         if (wall && view === 'Top') return;
         anchor = this.localPoint.set(light.x, light.y, light.z);
         this.plane.setFromNormalAndCoplanarPoint(wall ? wallNormals[wall] : yAxis, anchor);
+      } else if (hit.type === 'ceilingDecor') {
+        const item = room.ceilingDecor?.find(value => value.id === hit.id);
+        if (!item) return;
+        anchor = this.localPoint.set(item.x, room.dimensions.height, item.z);
+        this.plane.setFromNormalAndCoplanarPoint(yAxis, anchor);
       } else {
         const furniture = room.furniture.find(item => item.id === hit.id)!;
         anchor = this.localPoint.set(furniture.x, 0, furniture.z);
@@ -494,6 +565,9 @@ export class RoomScene {
     if (hit.type === 'furniture') {
       const items = room.furniture.map(item => item.id === hit.id ? fitFurniture(room.dimensions, { ...item, x, z }) : item);
       this.state.onMove({ ...room, furniture: items }, down.start);
+    } else if (hit.type === 'ceilingDecor') {
+      const items = (room.ceilingDecor ?? emptyDecor).map(item => item.id === hit.id ? fitCeilingDecor(room.dimensions, { ...item, x, z }) : item);
+      this.state.onMove({ ...room, ceilingDecor: items }, down.start);
     } else {
       const lights = room.lights.map(item => item.id === hit.id ? fitLight(room.dimensions, { ...item, x, y, z }) : item);
       this.state.onMove({ ...room, lights }, down.start);
@@ -527,9 +601,11 @@ export class RoomScene {
     this.renderer.domElement.remove();
     this.floor?.dispose();
     this.ceiling?.dispose();
+    this.ceilingFinish?.dispose();
     for (const wall of this.walls.values()) wall.dispose();
     for (const item of this.furniture.values()) item.dispose();
     for (const light of this.lights.values()) light.dispose();
+    for (const item of this.ceilingDecor.values()) item.dispose();
     this.daylight.dispose();
     for (const [key, asset] of Object.entries(this.assets)) {
       if (key === 'leaf' || key === 'textures') (asset as SceneAssets['leaf'] | SceneAssets['textures']).forEach(item => item.dispose());
