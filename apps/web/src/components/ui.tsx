@@ -58,9 +58,11 @@ export function NumberField({ label, value, onChange, min, max, step = 0.01, uni
 export function RangeField({ label, value, min, max, step, unit, onChange }: {
   label: string; value: number; min: number; max: number; step: number; unit: string; onChange: (value: number) => void;
 }) {
-  return <label className="range-field">
-    <span>{label}<output>{value}{unit}</output></span>
-    <input type="range" value={value} min={min} max={max} step={step} onChange={event => onChange(Number(event.currentTarget.value))} />
+  const id = useId();
+  return <label className="range-field" htmlFor={id}>
+    <span>{label}<output aria-hidden="true">{value}{unit}</output></span>
+    <input id={id} type="range" value={value} min={min} max={max} step={step} aria-valuetext={`${value}${unit}`}
+      onChange={event => onChange(Number(event.currentTarget.value))} />
   </label>;
 }
 

@@ -241,6 +241,8 @@ input:not([type="range"], [type="color"]), select {
   box-shadow: 0 3px 9px #302b2210;
 }
 .scene-tools { top: .89rem; left: .89rem; }
+.scene-swing-controls { position: absolute; top: .89rem; right: .89rem; max-width: calc(100% - 7rem); display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .32rem; }
+.scene-swing-controls .button { min-height: 2rem; padding: .29rem .48rem; font-size: .76rem; box-shadow: 0 3px 9px #302b2210; }
 .scene-camera { bottom: .89rem; right: .89rem; flex-direction: column; }
 .scene-camera .icon-button:last-child { border-top: 1px solid var(--line); border-radius: 0 0 .35rem .35rem; }
 .scene-tools .icon-button[aria-pressed="true"] { background: var(--olive-soft); color: var(--olive); }

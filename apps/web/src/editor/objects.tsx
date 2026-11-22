@@ -4,10 +4,10 @@ import {
   Armchair, DoorOpen, Lightbulb, Plus, RectangleVertical,
 } from 'lucide-react';
 import {
-  LIMITS, OPENINGS, WALL_LABELS, WALLS, fitOpening,
+  CURTAIN_LENGTHS, HINGE_SIDES, LIMITS, OPENINGS, WALL_LABELS, WALLS, fitOpening,
   openingFits, wallSpan, type FurnitureKind, type LightKind, type Opening, type Room, type Wall,
 } from '@studio/model';
-import { NumberField, SelectField } from '@/components/ui';
+import { NumberField, RangeField, SelectField } from '@/components/ui';
 import { addOpening } from './rooms';
 import { InteriorPanel } from './interior/panel';
 import { LightingPanel } from './lighting/panel';
@@ -49,13 +49,14 @@ export function ObjectPanel(props: ObjectPanelProps) {
 
 function OpeningControls({ room, wall, selection, onSelect, onChange, notify }: ObjectPanelProps) {
   const active = selection?.type === 'opening' ? room.openings.find(item => item.id === selection.id) : undefined;
-  const update = (item: Opening, changes: Partial<Opening>) => {
+  const curtains = active?.curtains;
+  const update = (item: Opening, changes: Partial<Opening>, field?: string) => {
     const next = fitOpening(room.dimensions, { ...item, ...changes });
     if (!openingFits(room, next)) {
       notify('That opening would overlap another. Try another position or wall.');
       return;
     }
-    onChange({ ...room, openings: room.openings.map(opening => opening.id === item.id ? next : opening) });
+    onChange({ ...room, openings: room.openings.map(opening => opening.id === item.id ? next : opening) }, field && `${item.id}:${field}`);
   };
   return <>
     <div className="two-fields">
@@ -84,6 +85,34 @@ function OpeningControls({ room, wall, selection, onSelect, onChange, notify }: 
         <NumberField label="Offset from center" value={active.offset} onChange={offset => update(active, { offset })} />
         {active.kind === 'Window' && <NumberField label="Sill height" min={0} value={active.sill} onChange={sill => update(active, { sill })} />}
       </div>
+      <RangeField label={`${active.kind} opening angle`} value={active.openAngle ?? 0} min={0} max={90} step={1} unit="°"
+        onChange={openAngle => update(active, { openAngle }, 'opening angle')} />
+      {active.kind === 'Door' && <SelectField label="Hinge side (from inside)" values={HINGE_SIDES} value={active.hinge ?? 'Left'}
+        onChange={hinge => update(active, { hinge })} />}
+      {active.kind === 'Window' && <section className="object-details">
+        <div className="fixture-heading">
+          <h3>Curtains</h3>
+          <button type="button" className="button button-secondary" onClick={() => update(active, { curtains: active.curtains ? undefined
+            : { drawn: 0, color: '#D6C2A7', length: 'Sill' } })}>{active.curtains ? 'Remove curtains' : 'Add curtains'}</button>
+        </div>
+        {curtains && <>
+          <button type="button" className="button button-secondary"
+            onClick={() => update(active, { curtains: { ...curtains, drawn: curtains.drawn ? 0 : 100 } })}>
+            {curtains.drawn ? 'Open curtains' : 'Draw curtains'}
+          </button>
+          <RangeField label="Curtains drawn" value={curtains.drawn} min={0} max={100} step={1} unit="%"
+            onChange={drawn => update(active, { curtains: { ...curtains, drawn } }, 'curtain draw')} />
+          <div className="two-fields">
+            <SelectField label="Curtain length" values={CURTAIN_LENGTHS} value={curtains.length}
+              onChange={length => update(active, { curtains: { ...curtains, length } })} />
+            <label className="field interior-color">
+              <span>Curtain color</span>
+              <input type="color" value={curtains.color}
+                onChange={event => update(active, { curtains: { ...curtains, color: event.currentTarget.value } }, 'curtain color')} />
+            </label>
+          </div>
+        </>}
+      </section>}
     </section>}
   </>;
 }

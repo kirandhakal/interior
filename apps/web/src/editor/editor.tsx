@@ -6,7 +6,7 @@ import {
   Plus, Redo2, Ruler, Save, Settings2, Sun, Sunrise, Sunset, Undo2, UserRound, X, type LucideIcon,
 } from 'lucide-react';
 import {
-  CEILING_CATALOG, DAYLIGHTS, FIXTURE_MOUNTS, LIMITS, WALL_LABELS, fitCeilingDecor, type Account, type CeilingDecorKind, type Daylight,
+  CEILING_CATALOG, DAYLIGHTS, FIXTURE_MOUNTS, LIMITS, WALL_LABELS, fitCeilingDecor, hasCabinetDoors, type Account, type CeilingDecorKind, type Daylight,
   type FurnitureKind, type LightKind, type Project, type Room, type SavedProject, type Wall,
 } from '@studio/model';
 import { IconButton } from '@/components/ui';
@@ -296,6 +296,10 @@ export function Editor() {
   const storageLabel = activeSave?.storage === 'account' ? 'Saved to account' : 'Saved in browser';
   const isWall = selection?.type === 'wall';
   const wallHex = room.walls[wall].color;
+  const selectedOpening = selection?.type === 'opening' ? room.openings.find(item => item.id === selection.id) : undefined;
+  const selectedCabinet = selection?.type === 'furniture' ? room.furniture.find(item => item.id === selection.id && hasCabinetDoors(item.kind)) : undefined;
+  const swingLabel = selectedOpening ? selectedOpening.kind.toLowerCase() : 'cabinet doors';
+  const swingIsOpen = (selectedOpening?.openAngle ?? selectedCabinet?.doorAngle ?? 0) > 0;
   return <>
     <header className="topbar">
       <div className="brand">
@@ -394,6 +398,19 @@ export function Editor() {
               else notify('Drop the item onto the ceiling surface.', true);
             }} />
           <SceneToolbar tool={tool} onTool={next => { setTool(next); setPlacingCeiling(false); }} onCamera={action => setCommand({ action })} />
+          {(!ceilingView || view === 'Interior') && !placingCeiling && (selectedOpening || selectedCabinet) &&
+            <div className="scene-swing-controls" role="group" aria-label="Swing controls">
+              <button type="button" className="button button-secondary" onClick={() => {
+                const angle = swingIsOpen ? 0 : 90;
+                if (selectedOpening) changeRoom({ ...room, openings: room.openings.map(item =>
+                  item.id === selectedOpening.id ? { ...item, openAngle: angle } : item) });
+                else if (selectedCabinet) changeRoom({ ...room, furniture: room.furniture.map(item =>
+                  item.id === selectedCabinet.id ? { ...item, doorAngle: angle } : item) });
+              }}><DoorOpen size={16} /> {swingIsOpen ? 'Close' : 'Open'} {swingLabel}</button>
+              {view !== 'Top' && <button type="button" className="button button-secondary" onClick={() => changeView('Top')}>
+                Show swing in Top
+              </button>}
+            </div>}
           {isWall && view === '3D' && <span className="scene-selection"><span style={colorStyle(wallHex)} /> {WALL_LABELS[wall]}</span>}
           {!placingCeiling && <span className="scene-hint">{view === 'Ceiling' ? 'Drag an item to reposition it'
             : view === 'Ceiling Outside' ? 'Drag empty space to orbit · Drag decor to move it'

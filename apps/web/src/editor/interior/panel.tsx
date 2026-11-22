@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Armchair, Copy, Plus, Search } from 'lucide-react';
 import {
   FURNITURE, FURNITURE_SCALE, INTERIOR_CATALOG, INTERIOR_CATEGORIES, LIMITS, clamp,
-  fitFurniture, furnitureBounds, furnitureFitsRoom, getDisplay, hasDisplay,
+  fitFurniture, furnitureBounds, furnitureFitsRoom, getDisplay, hasCabinetDoors, hasDisplay,
   type DisplaySettings, type Furniture, type FurnitureKind, type Room,
 } from '@studio/model';
 import { NumberField, RangeField, SelectField } from '@/components/ui';
@@ -124,6 +124,8 @@ function ItemSettings({ item, room, atLimit, onChange, onDuplicate }: {
       <ColorField label="Finish color" value={item.color ?? '#B99677'} onChange={color => onChange({ color }, 'color')} />
     </div>
     {item.color && <button className="text-button" type="button" onClick={() => onChange({ color: undefined })}>Restore original finish</button>}
+    {hasCabinetDoors(item.kind) && <RangeField label="Cabinet door angle" value={item.doorAngle ?? 0} min={0} max={90} step={1} unit="°"
+      onChange={doorAngle => onChange({ doorAngle }, 'cabinet doors')} />}
     {hasDisplay(item.kind) && <section className="object-details display-controls">
       <div className="fixture-heading">
         <h3>Screen light</h3>

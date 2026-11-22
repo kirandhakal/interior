@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository, TypeOrmModule } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { FIXTURE_MOUNTS, fitCeilingDecor, fitLight, furnitureBounds, furnitureFitsRoom, hasDisplay, openingFits, type Project, type SavedProject } from '../../../../packages/studio/model';
+import { FIXTURE_MOUNTS, fitCeilingDecor, fitLight, furnitureBounds, furnitureFitsRoom, hasCabinetDoors, hasDisplay, openingFits, type Project, type SavedProject } from '../../../../packages/studio/model';
 import { AuthModule, SessionGuard, type AuthRequest } from '../auth/auth';
 import { ProjectEntity } from '../database/entities';
 import { CreateProjectDto, UpdateProjectDto } from './project.dto';
@@ -28,7 +28,13 @@ function checkLayout(project: Project) {
     if (room.openings.some(opening => !openingFits(room, opening))) {
       throw new BadRequestException(`Openings in ${room.name} overlap or exceed the wall bounds.`);
     }
+    if (room.openings.some(opening => (opening.curtains && opening.kind !== 'Window') || (opening.hinge && opening.kind !== 'Door'))) {
+      throw new BadRequestException(`Invalid door or window settings in ${room.name}.`);
+    }
     for (const item of room.furniture) {
+      if (item.doorAngle !== undefined && !hasCabinetDoors(item.kind)) {
+        throw new BadRequestException(`${item.kind} has no cabinet doors.`);
+      }
       if (item.display && (!hasDisplay(item.kind) || (item.kind === 'TV' && item.display.count !== 1))) {
         throw new BadRequestException(`Invalid display settings for ${item.kind} in ${room.name}.`);
       }

@@ -5,8 +5,9 @@ import {
 } from 'class-validator';
 import {
   CEILING_DECOR, CEILING_DECOR_SCALE, CEILING_FINISHES, type CeilingDecorKind, type CeilingFinish,
-  DAYLIGHTS, DIMENSION_BOUNDS, FINISHES, FURNITURE, FURNITURE_SCALE, HEX_COLOR, LIGHTS, LIGHT_MOUNTS, LIMITS, MAX_LIGHT_LUMENS, OPENINGS, WALLS,
-  type Daylight, type Finish, type FurnitureKind, type LightKind, type LightMount, type OpeningKind, type Project, type Wall,
+  CURTAIN_LENGTHS, DAYLIGHTS, DIMENSION_BOUNDS, FINISHES, FURNITURE, FURNITURE_SCALE, HEX_COLOR, HINGE_SIDES,
+  LIGHTS, LIGHT_MOUNTS, LIMITS, MAX_LIGHT_LUMENS, OPENINGS, WALLS,
+  type Curtains, type Daylight, type Finish, type FurnitureKind, type LightKind, type LightMount, type Opening, type OpeningKind, type Project, type Wall,
 } from '../../../../packages/studio/model';
 
 const idPattern = /^[a-zA-Z0-9_-]{1,64}$/;
@@ -31,6 +32,12 @@ class WallPaintDto {
   @IsDefined() @IsObject() @ValidateNested() @Type(() => PaintDto) west!: PaintDto;
 }
 
+class CurtainsDto implements Curtains {
+  @Matches(HEX_COLOR) color!: string;
+  @number() @Min(0) @Max(100) drawn!: number;
+  @IsIn(CURTAIN_LENGTHS) length!: Curtains['length'];
+}
+
 class OpeningDto {
   @Matches(idPattern) id!: string;
   @IsIn(OPENINGS) kind!: OpeningKind;
@@ -39,6 +46,9 @@ class OpeningDto {
   @number() @Min(0) @Max(6) sill!: number;
   @number() @Min(0.4) @Max(18) width!: number;
   @number() @Min(0.4) @Max(6) height!: number;
+  @ValidateIf((_item, value) => value !== undefined) @number() @Min(0) @Max(90) openAngle?: number;
+  @ValidateIf((_item, value) => value !== undefined) @IsIn(HINGE_SIDES) hinge?: Opening['hinge'];
+  @ValidateIf((_item, value) => value !== undefined) @IsObject() @ValidateNested() @Type(() => CurtainsDto) curtains?: CurtainsDto;
 }
 
 class DisplayDto {
@@ -57,6 +67,7 @@ class FurnitureDto {
   @ValidateIf((_item, value) => value !== undefined) @number() @Min(FURNITURE_SCALE.min) @Max(FURNITURE_SCALE.max) scale?: number;
   @ValidateIf((_item, value) => value !== undefined) @Matches(HEX_COLOR) color?: string;
   @ValidateIf((_item, value) => value !== undefined) @IsObject() @ValidateNested() @Type(() => DisplayDto) display?: DisplayDto;
+  @ValidateIf((_item, value) => value !== undefined) @number() @Min(0) @Max(90) doorAngle?: number;
 }
 
 class LightDto {

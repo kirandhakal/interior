@@ -42,5 +42,7 @@ export type FurnitureKind = keyof typeof INTERIOR_CATALOG;
 export const FURNITURE = Object.keys(INTERIOR_CATALOG) as FurnitureKind[];
 export const FURNITURE_SCALE = { min: 0.5, max: 1.75 };
 export const hasDisplay = (kind: FurnitureKind) => kind === 'TV' || kind === 'Desktop PC';
+const cabinetKinds: readonly FurnitureKind[] = ['Sideboard', 'Media console', 'Wardrobe', 'Kitchen cabinet', 'Kitchen island', 'Kitchen sink', 'Vanity', 'Refrigerator'];
+export const hasCabinetDoors = (kind: FurnitureKind) => cabinetKinds.includes(kind);
 export const DEFAULT_DISPLAY = { enabled: true, brightness: 45, color: '#A9CCF5', count: 1 } as const;
 export const getDisplay = (kind: FurnitureKind) => ({ ...DEFAULT_DISPLAY, count: kind === 'Desktop PC' ? 2 : 1 });

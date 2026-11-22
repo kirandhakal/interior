@@ -2,6 +2,7 @@ import { Color, Group, MeshStandardMaterial, SpotLight } from 'three';
 import { INTERIOR_CATALOG, type DisplaySettings, type FurnitureKind } from '@studio/model';
 import type { SceneAssets } from './furniture';
 import { box, cylinder } from './primitives';
+import { createSwing, type Swing } from './swing';
 
 function table(g: Group, a: SceneAssets, width: number, depth: number, height: number) {
   box(g, a.wood, width, 0.065, depth, 0, height - 0.033, 0, 0.022);
@@ -12,16 +13,36 @@ function table(g: Group, a: SceneAssets, width: number, depth: number, height: n
   }
 }
 
-function cabinet(g: Group, a: SceneAssets, width: number, depth: number, height: number, rows: number, columns: number) {
-  box(g, a.wood, width - 0.01, height - 0.09, depth - 0.048, 0, (height - 0.013) / 2, -0.011, 0.014);
-  box(g, a.walnut, width - 0.08, 0.06, depth - 0.09, 0, 0.03, -0.02, 0.009);
+export function addCabinet(g: Group, a: SceneAssets, width: number, depth: number, height: number, rows: number, columns: number, swings?: Swing[], base = 0.07) {
+  if (swings) {
+    const bodyHeight = height - base;
+    const shellDepth = depth - 0.057;
+    for (const side of [-1, 1]) {
+      box(g, a.wood, 0.027, bodyHeight, shellDepth, side * (width / 2 - 0.014), base + bodyHeight / 2, -0.02);
+    }
+    box(g, a.walnut, width - 0.05, bodyHeight, 0.026, 0, base + bodyHeight / 2, -depth / 2 + 0.019);
+    const shelfYs = rows > 1 ? [base + 0.015, base + bodyHeight / 2] : [base + 0.015, base + bodyHeight * 0.48];
+    for (const y of shelfYs) box(g, a.wood, width - 0.05, 0.024, shellDepth, 0, y, -0.02);
+  } else {
+    box(g, a.wood, width - 0.01, height - 0.09, depth - 0.048, 0, (height - 0.013) / 2, -0.011, 0.014);
+  }
+  if (base < 0.1) box(g, a.walnut, width - 0.08, 0.06, depth - 0.09, 0, 0.03, -0.02, 0.009);
   const panelW = (width - 0.04) / columns;
-  const panelH = (height - 0.12) / rows;
-  for (let col = 0; col < columns; col++) for (let row = 0; row < rows; row++) {
-    const x = (col + 0.5 - columns / 2) * panelW;
-    const y = 0.07 + (row + 0.5) * panelH;
-    box(g, a.wood, panelW - 0.012, panelH - 0.012, 0.029, x, y, depth / 2 - 0.034, 0.008);
-    box(g, a.black, Math.min(0.12, panelW / 3), 0.018, 0.021, x, y + panelH * 0.26, depth / 2 - 0.009, 0.006);
+  const panelH = (height - base - 0.04) / rows;
+  for (let col = 0; col < columns; col++) {
+    const center = (col + 0.5 - columns / 2) * panelW;
+    const direction = columns > 1 && col === columns - 1 ? -1 : 1;
+    const front = depth / 2 - 0.034;
+    const swing = swings && createSwing(g, center - direction * panelW / 2, front, direction, panelW, a.swingMark);
+    if (swing) swings?.push(swing);
+    const parent = swing?.pivot ?? g;
+    const x = swing ? direction * panelW / 2 : center;
+    for (let row = 0; row < rows; row++) {
+      const y = base + (row + 0.5) * panelH;
+      box(parent, a.wood, panelW - 0.012, panelH - 0.012, 0.029, x, y, swing ? 0 : front, 0.008);
+      box(parent, a.black, Math.min(0.12, panelW / 3), 0.018, 0.021,
+        swing ? x + direction * panelW * 0.24 : x, y + panelH * 0.26, swing ? 0.025 : front + 0.025, 0.006);
+    }
   }
   box(g, a.wood, width, 0.027, depth, 0, height - 0.014, 0, 0.009);
 }
@@ -48,8 +69,8 @@ function officeChair(g: Group, a: SceneAssets) {
   for (const x of [-0.28, 0.28]) box(g, a.black, 0.068, 0.1, 0.32, x, 0.64, 0, 0.017);
 }
 
-function sink(g: Group, a: SceneAssets, width: number, depth: number, height: number) {
-  cabinet(g, a, width, depth, height, 1, 2);
+function sink(g: Group, a: SceneAssets, width: number, depth: number, height: number, swings: Swing[]) {
+  addCabinet(g, a, width, depth, height, 1, 2, swings);
   box(g, a.black, width * 0.62, 0.022, depth * 0.62, 0, height + 0.007, 0.023, 0.01);
   box(g, a.trim, width * 0.51, 0.018, depth * 0.45, 0, height + 0.016, 0.023, 0.007);
   cylinder(g, a.black, 0.017, 0.025, 0.16, 0, height + 0.08, -0.2);
@@ -67,7 +88,7 @@ function tub(g: Group, a: SceneAssets, width: number, depth: number) {
   cylinder(g, a.black, 0.022, 0.026, 0.14, -width * 0.3, 0.44, -depth / 2 + 0.045);
 }
 
-export function addInteriorModel(g: Group, kind: FurnitureKind, a: SceneAssets) {
+export function addInteriorModel(g: Group, kind: FurnitureKind, a: SceneAssets, swings: Swing[]) {
   const [w, d, h] = INTERIOR_CATALOG[kind].size;
   switch (kind) {
     case 'Side table': case 'Desk': case 'Dining table': case 'Bench':
@@ -75,7 +96,7 @@ export function addInteriorModel(g: Group, kind: FurnitureKind, a: SceneAssets) 
       break;
     case 'Nightstand': case 'Dresser': case 'Media console': case 'Wardrobe': case 'Kitchen cabinet': case 'Kitchen island': {
       const rows = kind === 'Nightstand' ? 2 : kind === 'Dresser' ? 3 : 1;
-      cabinet(g, a, w, d, h, rows, kind === 'Nightstand' ? 1 : 2);
+      addCabinet(g, a, w, d, h, rows, kind === 'Nightstand' ? 1 : 2, rows === 1 ? swings : undefined);
       if (kind === 'Kitchen island' || kind === 'Kitchen cabinet') box(g, a.trim, w, 0.045, d, 0, h - 0.022, 0, 0.014);
       break;
     }
@@ -102,11 +123,7 @@ export function addInteriorModel(g: Group, kind: FurnitureKind, a: SceneAssets) 
       }
       break;
     case 'Refrigerator':
-      box(g, a.trim, w, h, d - 0.08, 0, h / 2, -0.035, 0.045);
-      for (const [y, height] of [[h * 0.31, h * 0.61], [h * 0.795, h * 0.34]]) {
-        box(g, a.trim, w - 0.018, height, 0.062, 0, y, d / 2 - 0.065, 0.021);
-        box(g, a.black, 0.026, 0.29, 0.052, -w * 0.36, y, d / 2 - 0.027, 0.01);
-      }
+      addCabinet(g, { ...a, wood: a.trim, walnut: a.linenLight }, w, d, h, 2, 1, swings);
       break;
     case 'Range':
       box(g, a.trim, w, h - 0.04, d - 0.05, 0, (h - 0.04) / 2, -0.017, 0.019);
@@ -117,9 +134,9 @@ export function addInteriorModel(g: Group, kind: FurnitureKind, a: SceneAssets) 
         cylinder(g, a.base, 0.112, 0.116, 0.012, x, h - 0.009, z);
       }
       break;
-    case 'Kitchen sink': sink(g, a, w, d, h - 0.17); break;
+    case 'Kitchen sink': sink(g, a, w, d, h - 0.17, swings); break;
     case 'Vanity':
-      sink(g, a, w, d, 0.90);
+      sink(g, a, w, d, 0.90, swings);
       box(g, a.wood, 0.49, 0.58, 0.045, 0, 1.425, -d / 2 + 0.035, 0.02);
       box(g, a.trim, 0.435, 0.527, 0.023, 0, 1.425, -d / 2 + 0.061, 0.015);
       break;

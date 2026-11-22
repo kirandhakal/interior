@@ -8,7 +8,7 @@ import {
   FIXTURE_MOUNTS, WALLS, getDisplay, hasDisplay, fitCeilingDecor, fitFurniture, fitLight, fitOpening, isWallMount, openingFits,
   type CeilingDecor, type LightKind, type Room, type Wall,
 } from '@studio/model';
-import { createCeiling, createFloor, createWall, roughness, wallNormals } from './architecture';
+import { createCeiling, createFloor, createWall, roughness, sameOpeningGeometry, wallNormals } from './architecture';
 import { createCeilingDecor } from './ceiling-decor';
 import { createCeilingFinish } from './ceiling-finish';
 import { createAssets, createFurniture, type SceneAssets } from './furniture';
@@ -98,6 +98,7 @@ export class RoomScene {
   private down?: { pointer: number; x: number; y: number; hit?: ObjectHit; start: Room; look?: { pitch: number; yaw: number; dragging: boolean } };
   private dragOffset = new Vector3();
   private readonly selectionBox = new Box3();
+  private readonly meshBounds = new Box3();
   private readonly selectionHelper = new Box3Helper(this.selectionBox, new Color('#53634a'));
   private shadowDirty = true;
 
@@ -331,7 +332,7 @@ export class RoomScene {
         const openings = room.openings.filter(item => item.wall === wall);
         const existing = this.walls.get(wall);
         if (!existing || !sameLayout || existing.openings.length !== openings.length ||
-            existing.openings.some((item, index) => item !== openings[index])) {
+            existing.openings.some((item, index) => !sameOpeningGeometry(item, openings[index]))) {
           if (existing) {
             this.roomGroup.remove(existing.group);
             existing.dispose();
@@ -341,6 +342,7 @@ export class RoomScene {
           this.roomGroup.add(newWall.group);
         }
         const target = this.walls.get(wall)!;
+        for (const opening of openings) target.openingModels.get(opening.id)?.update(opening);
         target.material.color.set(room.walls[wall].color);
         target.material.roughness = roughness[room.walls[wall].finish];
         target.outline.visible = state.selection?.type === 'wall' && state.selection.wall === wall;
@@ -441,6 +443,9 @@ export class RoomScene {
     const isCeiling = isCeilingView(this.state.view);
     const ceilingOnly = isCeiling && !inside;
     const straightUp = this.state.view === 'Ceiling';
+    const selected = this.state.selection;
+    const swingProgress = reduceMotion() ? 1 : 1 - Math.exp(-elapsed / 50);
+    let swinging = false;
     this.ground.visible = !isCeiling;
     if (this.floor) this.floor.group.visible = !ceilingOnly;
     if (this.ceiling) {
@@ -448,7 +453,11 @@ export class RoomScene {
       this.ceiling.boundary.visible = isCeiling && !!this.state.onPlaceCeiling;
     }
     if (this.ceilingFinish) this.ceilingFinish.group.visible = isCeiling;
-    for (const item of this.furniture.values()) item.group.visible = !ceilingOnly;
+    for (const [id, item] of this.furniture) {
+      item.group.visible = !ceilingOnly;
+      item.showSwingGuides(isTop && selected?.type === 'furniture' && selected.id === id);
+      if (item.tickSwing(swingProgress)) swinging = true;
+    }
     for (const item of this.ceilingDecor.values()) item.group.visible = !isTop;
     this.localPoint.copy(this.camera.position).sub(this.controls.target).setY(0).normalize();
     for (const [wall, mesh] of this.walls) {
@@ -457,6 +466,10 @@ export class RoomScene {
       if (mesh.group.visible !== shown || mesh.group.scale.y !== height) this.shadowDirty = true;
       mesh.group.visible = shown;
       mesh.group.scale.y = height;
+      for (const [id, opening] of mesh.openingModels) {
+        opening.showSwingGuide(isTop && selected?.type === 'opening' && selected.id === id);
+        if (opening.tickSwing(swingProgress)) swinging = true;
+      }
       const rim = this.ceiling?.rim.get(wall);
       if (rim) rim.visible = shown && !isTop && !isCeiling;
     }
@@ -465,25 +478,33 @@ export class RoomScene {
       if (fixture) fixture.model.visible = ceilingOnly ? light.mount === 'Ceiling'
         : !isWallMount(light.mount) || !!this.walls.get(light.mount)?.group.visible;
     }
-    const selected = this.state.selection;
     let object: Object3D | undefined;
     if (selected?.type === 'furniture') object = this.furniture.get(selected.id)?.group;
     if (selected?.type === 'ceilingDecor') object = this.ceilingDecor.get(selected.id)?.group;
     if (selected?.type === 'light') object = this.lights.get(selected.id)?.model;
     if (selected?.type === 'opening') {
       const wall = this.state.room.openings.find(item => item.id === selected.id)?.wall;
-      const group = wall && this.walls.get(wall)?.group;
-      object = group ? group.children.find(child => child.userData.hit?.id === selected.id) : undefined;
+      object = wall ? this.walls.get(wall)?.openingModels.get(selected.id)?.group : undefined;
     }
     this.selectionHelper.visible = !!object && visible(object);
-    if (object && this.selectionHelper.visible) this.selectionBox.setFromObject(object).expandByScalar(0.018);
-    if (this.shadowDirty) {
+    if (object && this.selectionHelper.visible) {
+      object.updateWorldMatrix(true, true);
+      this.selectionBox.makeEmpty();
+      object.traverseVisible(child => {
+        if (!(child instanceof Mesh)) return;
+        const geometry = child.geometry;
+        if (!geometry.boundingBox) geometry.computeBoundingBox();
+        if (geometry.boundingBox) this.selectionBox.union(this.meshBounds.copy(geometry.boundingBox).applyMatrix4(child.matrixWorld));
+      });
+      this.selectionBox.expandByScalar(0.018);
+    }
+    if (this.shadowDirty || swinging) {
       this.renderer.shadowMap.needsUpdate = true;
       this.shadowDirty = false;
     }
     this.renderer.render(this.scene, this.activeCamera);
     this.animation = 0;
-    if (moved || this.cameraUntil || this.lightUntil) this.schedule();
+    if (moved || swinging || this.cameraUntil || this.lightUntil) this.schedule();
   };
 
   private cast(event: { clientX: number; clientY: number }) {

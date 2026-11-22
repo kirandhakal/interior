@@ -1,9 +1,11 @@
 import {
-  BoxGeometry, BufferGeometry, EdgesGeometry, Group, LineBasicMaterial, LineSegments, Mesh, MeshStandardMaterial, PlaneGeometry, Vector3,
+  BoxGeometry, BufferGeometry, DoubleSide, EdgesGeometry, Group, LineBasicMaterial, LineSegments, Mesh, MeshStandardMaterial, PlaneGeometry, Vector3,
 } from 'three';
-import { WALLS, wallSpan, type Dimensions, type Opening, type Room, type Wall } from '@studio/model';
+import { ParametricGeometry } from 'three/addons/geometries/ParametricGeometry.js';
+import { WALLS, wallSpan, type Curtains, type Dimensions, type Opening, type Room, type Wall } from '@studio/model';
 import type { SceneAssets } from './furniture';
-import { box } from './primitives';
+import { box, cylinder } from './primitives';
+import { createSwing, type Swing } from './swing';
 import { floorTexture } from './textures';
 
 export const WALL_THICKNESS = 0.16;
@@ -69,31 +71,106 @@ export function createCeiling({ length, width, height }: Dimensions) {
   return { group, slab, rim, boundary, dispose: () => { disposeGeometry(group); plaster.dispose(); edge.dispose(); boundaryStroke.dispose(); } };
 }
 
-function createOpening(opening: Opening, a: SceneAssets) {
+function windowCurtains(opening: Opening, roomHeight: number, span: number, a: SceneAssets) {
+  const group = new Group();
+  group.position.z = 0.205;
+  const extension = Math.min(0.15, Math.max(0, span / 2 - Math.abs(opening.offset) - opening.width / 2));
+  const half = opening.width / 2 + extension;
+  const top = Math.min(opening.height + 0.13, roomHeight - opening.sill - 0.03);
+  const material = new MeshStandardMaterial({ roughness: 0.98, side: DoubleSide });
+  const rod = cylinder(group, a.black, 0.012, 0.012, half * 2, 0, top, 0);
+  rod.rotation.z = Math.PI / 2;
+  const panels = [-1, 1].map(side => {
+    const geometry = new ParametricGeometry((u, v, target) => {
+      target.set(u - 0.5, -v + Math.cos(u * 9 * Math.PI * 2) * v ** 6 * 0.006,
+        Math.sin(u * 9 * Math.PI * 2) * (0.025 + v * 0.013));
+    }, 54, 12);
+    const panel = new Mesh(geometry, material);
+    panel.castShadow = true;
+    panel.receiveShadow = true;
+    group.add(panel);
+    return { panel, side };
+  });
+  return {
+    group, material,
+    update(value: Curtains) {
+      material.color.set(value.color);
+      const width = Math.min(half, 0.18 + value.drawn / 100 * (half - 0.18));
+      const bottom = value.length === 'Floor' ? 0.04 - opening.sill : Math.max(0.04 - opening.sill, -0.10);
+      for (const { panel, side } of panels) {
+        panel.position.set(side * (half - width / 2), top - 0.015, 0);
+        panel.scale.set(width, top - 0.015 - bottom, 1);
+      }
+    },
+  };
+}
+
+function createOpening(opening: Opening, a: SceneAssets, roomHeight: number, span: number) {
   const { width, height, offset, sill } = opening;
   const group = new Group();
   group.position.set(offset, sill, 0);
   group.userData.hit = { type: 'opening', id: opening.id };
   const rail = 0.045;
+  const swings: Swing[] = [];
+  let curtains: ReturnType<typeof windowCurtains> | undefined;
   for (const x of [-width / 2, width / 2]) box(group, a.trim, rail, height + rail, 0.245, x, height / 2, 0.005);
   box(group, a.trim, width + rail, rail, 0.245, 0, height, 0.005);
   if (opening.kind === 'Window') {
     box(group, a.trim, width + 0.10, 0.062, 0.28, 0, 0, 0.031);
-    const pane = new Mesh(new PlaneGeometry(width - 0.03, height - 0.035), a.glass);
-    pane.position.set(0, height / 2, -0.09);
-    group.add(pane);
-    box(group, a.trim, 0.042, height, 0.105, 0, height / 2, 0.009);
-    box(group, a.trim, width, 0.038, 0.105, 0, height * 0.64, 0.009);
-  } else {
-    const slab = box(group, a.wood, width - 0.055, height - 0.045, 0.05, 0, height / 2, 0.018);
-    slab.castShadow = true;
-    for (const y of [height * 0.28, height * 0.73]) {
-      box(group, a.walnut, width - 0.20, height * 0.34, 0.015, 0, y, 0.042, 0.008);
-      box(group, a.wood, width - 0.23, height * 0.32, 0.019, 0, y, 0.044, 0.006);
+    const backdrop = new Mesh(new PlaneGeometry(width - 0.025, height - 0.035), a.glass);
+    backdrop.position.set(0, height / 2, -0.115);
+    group.add(backdrop);
+    const sashWidth = width / 2 - 0.039;
+    const sashHeight = height - 0.058;
+    for (const direction of [-1, 1] as const) {
+      const swing = createSwing(group, -direction * (width / 2 - 0.026), 0.068, direction, sashWidth, a.swingMark);
+      swings.push(swing);
+      const x = direction * sashWidth / 2;
+      const pane = new Mesh(new PlaneGeometry(sashWidth - 0.021, sashHeight - 0.024), a.glazing);
+      pane.position.set(x, height / 2, 0);
+      swing.pivot.add(pane);
+      for (const y of [0.029, height - 0.029, height * 0.64]) box(swing.pivot, a.trim, sashWidth, 0.029, 0.046, x, y, 0);
+      for (const edge of [0.012, sashWidth - 0.012]) box(swing.pivot, a.trim, 0.027, sashHeight, 0.046, direction * edge, height / 2, 0);
+      box(swing.pivot, a.black, 0.016, 0.083, 0.035, direction * (sashWidth - 0.024), height * 0.48, 0.034, 0.005);
     }
-    box(group, a.black, 0.104, 0.027, 0.069, width / 2 - 0.12, height * 0.47, 0.07, 0.008);
+  } else {
+    const direction = opening.hinge === 'Right' ? -1 : 1;
+    const leafWidth = width - 0.055;
+    const swing = createSwing(group, -direction * leafWidth / 2, 0.071, direction, leafWidth, a.swingMark);
+    swings.push(swing);
+    const x = direction * leafWidth / 2;
+    box(swing.pivot, a.wood, leafWidth, height - 0.045, 0.05, x, height / 2, 0);
+    for (const y of [height * 0.28, height * 0.73]) {
+      box(swing.pivot, a.walnut, width - 0.20, height * 0.34, 0.015, x, y, 0.024, 0.008);
+      box(swing.pivot, a.wood, width - 0.23, height * 0.32, 0.019, x, y, 0.026, 0.006);
+    }
+    box(swing.pivot, a.black, 0.104, 0.027, 0.10, direction * (leafWidth - 0.09), height * 0.47, 0, 0.008);
   }
-  return group;
+  return {
+    group,
+    update(value: Opening) {
+      for (const swing of swings) swing.setAngle(value.openAngle ?? 0);
+      if (value.curtains && opening.kind === 'Window') {
+        if (!curtains) {
+          curtains = windowCurtains(opening, roomHeight, span, a);
+          group.add(curtains.group);
+        }
+        curtains.group.visible = true;
+        curtains.update(value.curtains);
+      } else if (curtains) curtains.group.visible = false;
+    },
+    showSwingGuide(show: boolean) { for (const swing of swings) swing.showGuide(show); },
+    tickSwing(progress: number) {
+      let moving = false;
+      for (const swing of swings) if (swing.advance(progress)) moving = true;
+      return moving;
+    },
+    dispose() { curtains?.material.dispose(); },
+  };
+}
+
+export function sameOpeningGeometry(a: Opening, b: Opening) {
+  return a.id === b.id && a.kind === b.kind && a.offset === b.offset && a.sill === b.sill && a.width === b.width && a.height === b.height && a.hinge === b.hinge;
 }
 
 export function createWall(room: Room, wall: Wall, openings: Opening[], a: SceneAssets) {
@@ -127,7 +204,8 @@ export function createWall(room: Room, wall: Wall, openings: Opening[], a: Scene
     if (height > bottom) box(group, material, size, height - bottom, WALL_THICKNESS, mid, (height + bottom) / 2, 0);
     if (voids.every(o => o.sill >= 0.105)) box(group, a.trim, size, 0.105, 0.026, mid, 0.0525, 0.091);
   }
-  for (const opening of openings) group.add(createOpening(opening, a));
+  const openingModels = new Map(openings.map(opening => [opening.id, createOpening(opening, a, height, span)]));
+  for (const model of openingModels.values()) group.add(model.group);
   const outlineGeometry = new BoxGeometry(span + WALL_THICKNESS, height, WALL_THICKNESS);
   const edges = new EdgesGeometry(outlineGeometry);
   outlineGeometry.dispose();
@@ -136,5 +214,10 @@ export function createWall(room: Room, wall: Wall, openings: Opening[], a: Scene
   outline.position.y = height / 2;
   outline.visible = false;
   group.add(outline);
-  return { group, outline, material, openings, dispose: () => { disposeGeometry(group); material.dispose(); stroke.dispose(); } };
+  return { group, outline, material, openings, openingModels, dispose() {
+    disposeGeometry(group);
+    for (const model of openingModels.values()) model.dispose();
+    material.dispose();
+    stroke.dispose();
+  } };
 }

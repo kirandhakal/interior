@@ -1,6 +1,6 @@
 import { INTERIOR_CATALOG, type FurnitureKind } from './interior';
 import { CEILING_CATALOG, type CeilingDecor, type CeilingFinish } from './ceiling';
-export { DEFAULT_DISPLAY, FURNITURE, FURNITURE_SCALE, INTERIOR_CATALOG, INTERIOR_CATEGORIES, getDisplay, hasDisplay, type FurnitureKind } from './interior';
+export { DEFAULT_DISPLAY, FURNITURE, FURNITURE_SCALE, INTERIOR_CATALOG, INTERIOR_CATEGORIES, getDisplay, hasCabinetDoors, hasDisplay, type FurnitureKind } from './interior';
 export * from './ceiling';
 
 export const WALLS = ['north', 'east', 'south', 'west'] as const;
@@ -21,11 +21,17 @@ export type LightMount = typeof LIGHT_MOUNTS[number];
 export type Dimensions = { length: number; width: number; height: number };
 export type Paint = { color: string; finish: Finish };
 export type WallPaint = Record<Wall, Paint>;
-export type Opening = { id: string; kind: OpeningKind; wall: Wall; offset: number; sill: number; width: number; height: number };
+export const HINGE_SIDES = ['Left', 'Right'] as const;
+export const CURTAIN_LENGTHS = ['Sill', 'Floor'] as const;
+export type Curtains = { color: string; drawn: number; length: typeof CURTAIN_LENGTHS[number] };
+export type Opening = {
+  id: string; kind: OpeningKind; wall: Wall; offset: number; sill: number; width: number; height: number;
+  openAngle?: number; hinge?: typeof HINGE_SIDES[number]; curtains?: Curtains;
+};
 export type DisplaySettings = { enabled: boolean; brightness: number; color: string; count: number };
 export type Furniture = {
   id: string; kind: FurnitureKind; x: number; z: number; rotation: number;
-  scale?: number; color?: string; display?: DisplaySettings;
+  scale?: number; color?: string; display?: DisplaySettings; doorAngle?: number;
 };
 export type Light = {
   id: string; kind: LightKind; x: number; y: number; z: number;
