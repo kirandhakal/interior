@@ -2,7 +2,7 @@ import {
   CatmullRomCurve3, CylinderGeometry, DoubleSide, ExtrudeGeometry, Float32BufferAttribute, Group, IcosahedronGeometry,
   Mesh, MeshStandardMaterial, Shape, SphereGeometry, TorusGeometry, TubeGeometry, Vector3, type BufferGeometry,
 } from 'three';
-import { ceilingDecorBounds, type CeilingDecor, type Dimensions } from '@studio/model';
+import { ceilingDecorScale, type CeilingDecor, type Dimensions } from '@studio/model';
 import { ParametricGeometry } from 'three/addons/geometries/ParametricGeometry.js';
 import { disposeGeometry } from './architecture';
 import { box, cylinder } from './primitives';
@@ -194,7 +194,7 @@ export function createCeilingDecor(kind: CeilingDecor['kind']) {
     update(item: CeilingDecor, dimensions: Dimensions) {
       finish.color.set(item.color);
       group.position.set(item.x, dimensions.height, item.z);
-      group.scale.setScalar(Math.min(ceilingDecorBounds(dimensions, item).scale, (dimensions.height - 0.08) / 1.35));
+      group.scale.setScalar(Math.min(ceilingDecorScale(dimensions, item), (dimensions.height - 0.08) / 1.35));
       group.rotation.y = item.rotation * Math.PI / 180;
     },
     dispose() { disposeGeometry(group); [finish, cord, accent, leaves].forEach(material => material.dispose()); },

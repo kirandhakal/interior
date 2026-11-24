@@ -1,5 +1,5 @@
 import { Plane, Vector3, type Ray } from 'three';
-import { FIXTURE_MOUNTS, isWallMount, type Dimensions, type LightKind, type Wall } from '@studio/model';
+import { FIXTURE_MOUNTS, isWallMount, roomContains, type Dimensions, type LightKind, type Wall } from '@studio/model';
 import type { LightPlacement } from '../lighting/fixtures';
 
 const up = new Vector3(0, 1, 0);
@@ -16,7 +16,7 @@ export function fixturePlacement(ray: Ray, dimensions: Dimensions, kind: LightKi
   const point = new Vector3();
   const plane = new Plane(up, -y);
   function hitsRoom() {
-    return ray.intersectPlane(plane, point) && Math.abs(point.x) <= dimensions.length / 2 && Math.abs(point.z) <= dimensions.width / 2;
+    return ray.intersectPlane(plane, point) && roomContains(dimensions, point);
   }
   if (!hitsRoom()) {
     if (mount !== 'Ceiling') return;

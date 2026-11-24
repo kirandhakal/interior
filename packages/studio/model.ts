@@ -1,9 +1,13 @@
 import { INTERIOR_CATALOG, type FurnitureKind } from './interior';
 import { CEILING_CATALOG, type CeilingDecor, type CeilingFinish } from './ceiling';
+import {
+  WALLS, OPENING_EDGE_CLEARANCE, OPENING_GAP, PLACEMENT_TOLERANCE, placementPoint, pointAlongWall, roomPlan, wallOffset, wallSpan,
+  type Dimensions, type PlanPoint, type PlanWall, type Wall,
+} from './dimensions';
 export { DEFAULT_DISPLAY, FURNITURE, FURNITURE_SCALE, INTERIOR_CATALOG, INTERIOR_CATEGORIES, getDisplay, hasCabinetDoors, hasDisplay, type FurnitureKind } from './interior';
 export * from './ceiling';
+export * from './dimensions';
 
-export const WALLS = ['north', 'east', 'south', 'west'] as const;
 export const FINISHES = ['Matte', 'Eggshell', 'Satin'] as const;
 export const DAYLIGHTS = ['Morning', 'Afternoon', 'Evening', 'Night'] as const;
 export const OPENINGS = ['Door', 'Window'] as const;
@@ -12,13 +16,11 @@ export const LIGHTS = ['Bulb', 'Floor lamp', 'Wall sconce', 'Ceiling light', 'Sp
 export const LIGHT_MOUNTS = ['Ceiling', 'Floor', 'Free', ...WALLS] as const;
 export const MAX_LIGHT_LUMENS = 20000;
 
-export type Wall = typeof WALLS[number];
 export type Finish = typeof FINISHES[number];
 export type Daylight = typeof DAYLIGHTS[number];
 export type OpeningKind = typeof OPENINGS[number];
 export type LightKind = typeof LIGHTS[number];
 export type LightMount = typeof LIGHT_MOUNTS[number];
-export type Dimensions = { length: number; width: number; height: number };
 export type Paint = { color: string; finish: Finish };
 export type WallPaint = Record<Wall, Paint>;
 export const HINGE_SIDES = ['Left', 'Right'] as const;
@@ -78,99 +80,104 @@ export const isWallMount = (mount: LightMount | undefined): mount is Wall =>
   mount === 'north' || mount === 'east' || mount === 'south' || mount === 'west';
 export const isPointFixture = (kind: LightKind) => kind === 'Bulb' || kind === 'Floor lamp' || kind === 'Chandelier' || kind === 'Fairy lights';
 export const lightLumens = (light: Light) => light.lumens ?? Math.round(light.brightness * 0.39 * Math.PI);
-export const DIMENSION_BOUNDS = { length: [1.2, 18], width: [1.2, 18], height: [2, 6] } as const;
 export const LIMITS = { rooms: 30, openings: 18, furniture: 60, lights: 8, ceilingDecor: 24, options: 12, name: 80 };
 export const HEX_COLOR = /^#[\da-f]{6}$/i;
-export const wallSpan = (dimensions: Dimensions, wall: Wall) =>
-  wall === 'north' || wall === 'south' ? dimensions.length : dimensions.width;
 export const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
-const round = (value: number) => Math.round(value * 1000) / 1000;
 
-export function ceilingDecorBounds(dimensions: Dimensions, item: CeilingDecor) {
+function footprintClearance(width: number, depth: number, rotation: number, scale: number, margin = 0) {
+  const angle = rotation * Math.PI / 180;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return ({ normal }: PlanWall) => scale / 2 * (
+    width * Math.abs(normal.x * cos - normal.z * sin) + depth * Math.abs(normal.x * sin + normal.z * cos)
+  ) + margin;
+}
+
+export function ceilingDecorScale(dimensions: Dimensions, item: CeilingDecor) {
   const [width, depth] = CEILING_CATALOG[item.kind].size;
-  const angle = item.rotation * Math.PI / 180;
-  const sin = Math.abs(Math.sin(angle));
-  const cos = Math.abs(Math.cos(angle));
-  const length = width * cos + depth * sin;
-  const span = width * sin + depth * cos;
-  const scale = Math.min(item.scale, (dimensions.length - 0.04) / length, (dimensions.width - 0.04) / span);
-  return { scale, x: (dimensions.length - length * scale) / 2, z: (dimensions.width - span * scale) / 2 };
+  const center = roomPlan(dimensions).center;
+  const fits = (scale: number) => placementPoint(dimensions, center, footprintClearance(width, depth, item.rotation, scale, 0.02));
+  if (fits(item.scale)) return item.scale;
+  let low = 0;
+  let high = item.scale;
+  for (let i = 0; i < 32; i++) {
+    const middle = (low + high) / 2;
+    if (fits(middle)) low = middle;
+    else high = middle;
+  }
+  return low;
 }
 
 export function fitCeilingDecor(dimensions: Dimensions, item: CeilingDecor): CeilingDecor {
-  const { x, z } = ceilingDecorBounds(dimensions, item);
-  return { ...item, x: round(clamp(item.x, -x, x)), z: round(clamp(item.z, -z, z)) };
+  const [width, depth] = CEILING_CATALOG[item.kind].size;
+  const scale = ceilingDecorScale(dimensions, item);
+  const point = placementPoint(dimensions, item, footprintClearance(width, depth, item.rotation, scale, 0.02));
+  return point && point !== item ? { ...item, ...point } : item;
 }
 
 export function openingFits(room: Room, opening: Opening) {
-  const edge = wallSpan(room.dimensions, opening.wall) / 2 - 0.08;
-  if (Math.abs(opening.offset) + opening.width / 2 > edge + 0.002 ||
-      opening.sill + opening.height > room.dimensions.height - 0.08 + 0.002 ||
+  const edge = wallSpan(room.dimensions, opening.wall) / 2 - OPENING_EDGE_CLEARANCE;
+  if (Math.abs(opening.offset) + opening.width / 2 > edge + PLACEMENT_TOLERANCE ||
+      opening.sill + opening.height > room.dimensions.height - OPENING_EDGE_CLEARANCE + PLACEMENT_TOLERANCE ||
       (opening.kind === 'Door' && opening.sill !== 0)) return false;
   return room.openings.every(other => other.id === opening.id || other.wall !== opening.wall ||
-    Math.abs(other.offset - opening.offset) >= (other.width + opening.width) / 2 + 0.04 - 0.002 ||
-    opening.sill + opening.height + 0.04 - 0.002 <= other.sill ||
-    other.sill + other.height + 0.04 - 0.002 <= opening.sill);
+    Math.abs(other.offset - opening.offset) >= (other.width + opening.width) / 2 + OPENING_GAP - PLACEMENT_TOLERANCE ||
+    !openingsShareHeight(opening, other));
 }
+
+export const openingsShareHeight = (first: Opening, second: Opening) =>
+  first.sill + first.height + OPENING_GAP - PLACEMENT_TOLERANCE > second.sill &&
+  second.sill + second.height + OPENING_GAP - PLACEMENT_TOLERANCE > first.sill;
 
 export function fitOpening(dimensions: Dimensions, opening: Opening): Opening {
   const span = wallSpan(dimensions, opening.wall);
-  const width = clamp(opening.width, 0.4, span - 0.16);
-  const height = clamp(opening.height, 0.4, dimensions.height - 0.08);
-  const offsetLimit = (span - width) / 2 - 0.08;
-  const sill = opening.kind === 'Door' ? 0 : clamp(opening.sill, 0, dimensions.height - height - 0.08);
-  return { ...opening, width, height, offset: round(clamp(opening.offset, -offsetLimit, offsetLimit)), sill: round(sill) };
+  const width = clamp(opening.width, 0.4, span - 2 * OPENING_EDGE_CLEARANCE);
+  const height = clamp(opening.height, 0.4, dimensions.height - OPENING_EDGE_CLEARANCE);
+  const offsetLimit = (span - width) / 2 - OPENING_EDGE_CLEARANCE;
+  const sill = opening.kind === 'Door' ? 0 : clamp(opening.sill, 0, dimensions.height - height - OPENING_EDGE_CLEARANCE);
+  return { ...opening, width, height, offset: clamp(opening.offset, -offsetLimit, offsetLimit), sill };
 }
 
-function furnitureFootprint(item: Furniture) {
+function furniturePosition(dimensions: Dimensions, item: Furniture): PlanPoint | undefined {
   const [width, depth, height] = INTERIOR_CATALOG[item.kind].size;
   const scale = item.scale ?? 1;
-  const angle = item.rotation * Math.PI / 180;
-  const sin = Math.abs(Math.sin(angle));
-  const cos = Math.abs(Math.cos(angle));
-  return { length: (width * cos + depth * sin) * scale, width: (width * sin + depth * cos) * scale, height: height * scale };
+  if (item.kind !== 'Wall art' && scale * height > dimensions.height + PLACEMENT_TOLERANCE) return;
+  return placementPoint(dimensions, item, footprintClearance(width, depth, item.rotation, scale));
 }
 
 export function furnitureFitsRoom(dimensions: Dimensions, item: Furniture) {
-  const footprint = furnitureFootprint(item);
-  return footprint.length <= dimensions.length + 0.002 && footprint.width <= dimensions.width + 0.002 &&
-    (item.kind === 'Wall art' || footprint.height <= dimensions.height + 0.002);
+  return furniturePosition(dimensions, item) !== undefined;
 }
 
-export function furnitureBounds(dimensions: Dimensions, item: Furniture) {
-  const footprint = furnitureFootprint(item);
-  return { x: Math.max(0, (dimensions.length - footprint.length) / 2), z: Math.max(0, (dimensions.width - footprint.width) / 2) };
+export function furniturePlacementFits(dimensions: Dimensions, item: Furniture) {
+  const position = furniturePosition(dimensions, item);
+  if (position && Math.hypot(position.x - item.x, position.z - item.z) <= PLACEMENT_TOLERANCE) return true;
+  const [width, depth, height] = INTERIOR_CATALOG[item.kind].size;
+  const scale = item.scale ?? 1;
+  if (item.kind !== 'Wall art' && scale * height > dimensions.height + PLACEMENT_TOLERANCE) return false;
+  return placementPoint(dimensions, item, footprintClearance(width, depth, item.rotation, scale, -PLACEMENT_TOLERANCE)) === item;
 }
 
 export function fitFurniture(dimensions: Dimensions, item: Furniture): Furniture {
-  const lengthwise = { ...item, rotation: 0 };
-  const fitted = furnitureFitsRoom(dimensions, item) ? item
-    : furnitureFitsRoom(dimensions, lengthwise) ? lengthwise : { ...item, rotation: 90 };
-  const { x, z } = furnitureBounds(dimensions, fitted);
-  return { ...fitted, x: round(clamp(item.x, -x, x)), z: round(clamp(item.z, -z, z)) };
+  for (const rotation of [item.rotation, 0, 90]) {
+    const rotated = rotation === item.rotation ? item : { ...item, rotation };
+    const position = furniturePosition(dimensions, rotated);
+    if (position) return position === rotated ? rotated : { ...rotated, ...position };
+  }
+  return item;
 }
 
 export function fitLight(dimensions: Dimensions, light: Light): Light {
   const mount = light.mount ?? 'Free';
   const margin = mount === 'Floor' ? 0.24 : light.kind === 'Fairy lights' ? 0.58
-    : light.kind === 'Chandelier' || light.kind === 'LED strip' ? 0.44 : light.kind === 'Pendant light' ? 0.28 : 0.12;
-  const halfLength = dimensions.length / 2;
-  const halfWidth = dimensions.width / 2;
-  let x = round(clamp(light.x, -halfLength + margin, halfLength - margin));
-  let z = round(clamp(light.z, -halfWidth + margin, halfWidth - margin));
-  let y = round(clamp(light.y, 0.25, dimensions.height - 0.1));
-  switch (mount) {
-    case 'north': z = -halfWidth; break;
-    case 'south': z = halfWidth; break;
-    case 'east': x = halfLength; break;
-    case 'west': x = -halfLength; break;
-    case 'Ceiling': y = dimensions.height; break;
-    case 'Floor': y = 0; break;
-    case 'Free':
-      // Preserve the placement rules for projects saved before fixtures had mounts.
-      x = round(clamp(light.x, -halfLength + 0.1, halfLength - 0.1));
-      z = round(clamp(light.z, -halfWidth + 0.1, halfWidth - 0.1));
-      break;
+    : light.kind === 'Chandelier' || light.kind === 'LED strip' ? 0.44 : light.kind === 'Pendant light' ? 0.28 : mount === 'Free' ? 0.1 : 0.12;
+  const y = mount === 'Ceiling' ? dimensions.height : mount === 'Floor' ? 0 : clamp(light.y, 0.25, dimensions.height - 0.1);
+  if (isWallMount(mount)) {
+    const wall = roomPlan(dimensions).walls[mount];
+    const limit = Math.max(0, wall.span / 2 - margin);
+    const point = pointAlongWall(wall, clamp(wallOffset(wall, light), -limit, limit));
+    return { ...light, ...point, y };
   }
-  return { ...light, x, y, z };
+  const point = placementPoint(dimensions, light, () => margin) ?? placementPoint(dimensions, light, () => 0) ?? roomPlan(dimensions).center;
+  return { ...light, x: point.x, z: point.z, y };
 }

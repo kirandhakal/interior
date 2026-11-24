@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { useContext, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { ChevronDown, X } from 'lucide-react';
+import { measurementInputValue, toMeters } from '@studio/measurement';
+import { MeasurementUnitContext } from './measurement-input';
 
 type IconButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { label: string; pressed?: boolean };
 export function IconButton({ label, pressed, className = '', children, ...props }: IconButtonProps) {
@@ -36,21 +38,26 @@ export function SelectField<T extends string>({ label, value, values, onChange, 
 export function NumberField({ label, value, onChange, min, max, step = 0.01, unit = 'm' }: {
   label: string; value: number; onChange: (value: number) => void; min?: number; max?: number; step?: number; unit?: string;
 }) {
+  const measurementUnit = useContext(MeasurementUnitContext);
+  const distance = unit === 'm';
+  const display = (number: number | undefined) => number === undefined || !distance ? number : measurementInputValue(number, measurementUnit);
   const [draft, setDraft] = useState<string | undefined>();
   const commit = () => {
     if (draft === undefined) return;
-    const next = Number(draft);
+    const number = Number(draft);
+    const next = distance ? toMeters(number, measurementUnit) : number;
     setDraft(undefined);
     if (draft.trim() && Number.isFinite(next) && next !== value) onChange(next);
   };
   return <label className="field">
     <span>{label}</span>
     <span className="number-wrap">
-      <input type="number" value={draft ?? value} min={min} max={max} step={step} onChange={event => setDraft(event.currentTarget.value)}
+      <input type="number" value={draft ?? display(value)} min={display(min)} max={display(max)} step={distance ? 'any' : step}
+        onChange={event => setDraft(event.currentTarget.value)}
         onBlur={commit} onKeyDown={event => {
           if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur(); }
         }} />
-      {unit && <span className="unit" aria-hidden="true">{unit}</span>}
+      {unit && <span className="unit" aria-hidden="true">{distance ? measurementUnit : unit}</span>}
     </span>
   </label>;
 }

@@ -1,5 +1,5 @@
 import {
-  WALLS, fitCeilingDecor, fitFurniture, fitLight, fitOpening, furnitureFitsRoom, openingFits,
+  WALLS, fitFurniture, fitOpening, furnitureFitsRoom, openingFits,
   type Dimensions, type Furniture, type FurnitureKind,
   type Opening, type OpeningKind, type Project, type Room, type Wall, type WallPaint,
 } from '@studio/model';
@@ -7,10 +7,10 @@ import type { InteriorPlacement } from './interior-placement';
 
 export const WALL_DEFAULT = '#EAE4D8';
 export const PRESETS = [
-  { name: 'Living room', length: 5.8, width: 4.4, height: 2.85 },
-  { name: 'Bedroom', length: 4.2, width: 3.5, height: 2.65 },
-  { name: 'Home office', length: 3.6, width: 3, height: 2.6 },
-  { name: 'Custom room', length: 4, width: 3.5, height: 2.6 },
+  { name: 'Living room', dimensions: { length: 5.8, width: 4.4, height: 2.85 } },
+  { name: 'Bedroom', dimensions: { length: 4.2, width: 3.5, height: 2.65 } },
+  { name: 'Home office', dimensions: { length: 3.6, width: 3, height: 2.6 } },
+  { name: 'Custom room', dimensions: { length: 4, width: 3.5, height: 2.6 } },
 ];
 
 export function newRoom(id: string, name: string, dimensions: Dimensions): Room {
@@ -22,7 +22,7 @@ export function newRoom(id: string, name: string, dimensions: Dimensions): Room 
 }
 
 export function starterProject(): Project {
-  const { name, ...dimensions } = PRESETS[0];
+  const { name, dimensions } = PRESETS[0];
   const room = newRoom('living-room', name, dimensions);
   room.walls.north.color = '#A4AB94';
   room.walls.west.color = '#F0E9DC';
@@ -41,15 +41,6 @@ export function starterProject(): Project {
     { id: 'console', kind: 'Sideboard', x: -2.52, z: 0.81, rotation: 90 },
   );
   return { name: 'My home', rooms: [room] };
-}
-
-export function resizeRoom(room: Room, name: string, dimensions: Dimensions): Room | undefined {
-  const updated = { ...room, name, dimensions, openings: room.openings.map(opening => fitOpening(dimensions, opening)) };
-  if (!updated.openings.every(opening => openingFits(updated, opening))) return;
-  const furniture = room.furniture.map(item => fitFurniture(dimensions, item));
-  if (furniture.some(item => !furnitureFitsRoom(dimensions, item))) return;
-  return { ...updated, furniture, lights: room.lights.map(light => fitLight(dimensions, light)),
-    ceilingDecor: room.ceilingDecor?.map(item => fitCeilingDecor(dimensions, item)) };
 }
 
 export function addOpening(room: Room, kind: OpeningKind, wall: Wall): Opening | undefined {

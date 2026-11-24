@@ -1,14 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Armchair, Box, CheckCircle2, DoorOpen, FolderOpen, Info, LampCeiling, Lightbulb, Moon, PaintRoller, Palette,
   Plus, Redo2, Ruler, Save, Settings2, Sun, Sunrise, Sunset, Undo2, UserRound, X, type LucideIcon,
 } from 'lucide-react';
 import {
-  CEILING_CATALOG, DAYLIGHTS, FIXTURE_MOUNTS, LIMITS, WALL_LABELS, fitCeilingDecor, hasCabinetDoors, type Account, type CeilingDecorKind, type Daylight,
+  CEILING_CATALOG, DAYLIGHTS, FIXTURE_MOUNTS, LIMITS, WALL_LABELS, fitCeilingDecor, hasCabinetDoors, roomPlan, wallSpan, type Account, type CeilingDecorKind, type Daylight,
   type FurnitureKind, type LightKind, type Project, type Room, type SavedProject, type Wall,
 } from '@studio/model';
+import { MEASUREMENT_UNITS, formatMeasurement, type MeasurementUnit } from '@studio/measurement';
+import { MeasurementUnitContext } from '@/components/measurement-input';
 import { IconButton } from '@/components/ui';
 import { api, ApiError, errorMessage } from '@/projects/api';
 import { AuthDialog, ProjectDialog } from '@/projects/dialogs';
@@ -23,7 +25,7 @@ import { ObjectPanel, type ObjectTab } from './objects';
 import { CompareDialog } from './paint/compare';
 import { PaintPanel, colorStyle } from './paint/panel';
 import { RoomDialog } from './room-dialog';
-import { addFurniture, newRoom, PRESETS, resizeRoom, starterProject } from './rooms';
+import { addFurniture, newRoom, PRESETS, starterProject } from './rooms';
 import { Preview, SceneToolbar, ViewSwitch } from './scene/preview';
 import { isCeilingView, type CameraAction, type Hit, type Tool, type View } from './scene/room-scene';
 
@@ -40,6 +42,7 @@ const tabs: { name: Tab; icon: LucideIcon }[] = [
 const dayIcons: Record<Daylight, LucideIcon> = { Morning: Sunrise, Afternoon: Sun, Evening: Sunset, Night: Moon };
 const objectTabs = { opening: 'Openings', furniture: 'Furniture', light: 'Lighting', ceilingDecor: 'Ceiling' } as const;
 const LAST_PROJECT = 'room-paint-studio.last.v1';
+const MEASUREMENT_PREFERENCE = 'room-paint-studio.measurement-unit';
 const initialSelection: Hit = { type: 'wall', wall: DEFAULT_WALL };
 
 function markLast(id: string, storage: Storage) {
@@ -56,10 +59,10 @@ function contents(project: SavedProject): Project {
 }
 
 function pickCeilingPosition<T extends InteriorPlacement>(room: Room, fit: (x: number, z: number) => T): T {
-  const { length, width } = room.dimensions;
+  const { bounds: { length, width }, center } = roomPlan(room.dimensions);
   const positions = [[0, 0], [-0.27, -0.23], [0.27, 0.23], [-0.27, 0.23], [0.27, -0.23], [0, 0.34], [0, -0.34], [0.34, 0], [-0.34, 0]];
   const occupied = [...(room.ceilingDecor ?? []), ...room.lights.filter(light => light.mount === 'Ceiling')];
-  const candidates = positions.map(([x, z]) => fit(x * length, z * width));
+  const candidates = positions.map(([x, z]) => fit(center.x + x * length, center.z + z * width));
   return candidates.find(candidate => occupied.every(other => Math.hypot(candidate.x - other.x, candidate.z - other.z) > 0.74)) ?? candidates[0];
 }
 
@@ -79,6 +82,9 @@ export function Editor() {
   const [tool, setTool] = useState<Tool>('Select');
   const [command, setCommand] = useState<{ action: CameraAction }>();
   const [dialog, setDialog] = useState<Dialog>();
+  const [roomDraft, setRoomDraft] = useState<Room>();
+  const [focusWall, setFocusWall] = useState<Wall>();
+  const [unit, setUnit] = useState<MeasurementUnit>('m');
   const [account, setAccount] = useState<Account | null>(null);
   const [activeSave, setActiveSave] = useState<ActiveSave>();
   const [saving, setSaving] = useState(false);
@@ -87,7 +93,8 @@ export function Editor() {
   const touched = useRef(false);
   const savingRef = useRef(false);
   const lastGroup = useRef<{ name: string; key: string; time: number } | undefined>(undefined);
-  const dirty = activeSave ? JSON.stringify(project) !== JSON.stringify(contents(activeSave.data)) : history.past.length > 0;
+  const dirty = useMemo(() => activeSave ? JSON.stringify(project) !== JSON.stringify(contents(activeSave.data)) : history.past.length > 0,
+    [activeSave, project, history.past.length]);
   const notify = useCallback((text: string, error = false) => setNotice({ text, error }), []);
 
   const switchRoom = useCallback((id: string) => {
@@ -109,7 +116,12 @@ export function Editor() {
   useEffect(() => {
     let alive = true;
     let last: string | null = null;
-    try { last = localStorage.getItem(LAST_PROJECT); } catch {}
+    try {
+      last = localStorage.getItem(LAST_PROJECT);
+      const savedUnit = localStorage.getItem(MEASUREMENT_PREFERENCE);
+      const preferred = MEASUREMENT_UNITS.find(value => value === savedUnit);
+      if (preferred) setUnit(preferred);
+    } catch {}
     const [storage, id] = last?.split('/') ?? [];
     if (storage === 'browser') {
       const saved = readLocalProjects().find(project => project.id === id);
@@ -282,8 +294,8 @@ export function Editor() {
 
   const reset = () => {
     touched.current = true;
-    const { name, length, height, width } = PRESETS[0];
-    const fresh = newRoom(crypto.randomUUID(), name, { length, width, height });
+    const { name, dimensions } = PRESETS[0];
+    const fresh = newRoom(crypto.randomUUID(), name, dimensions);
     dispatch({ type: 'load', project: { name: 'Untitled home', rooms: [fresh] } });
     switchRoom(fresh.id);
     setTab('Paint');
@@ -292,7 +304,16 @@ export function Editor() {
     forgetLast();
   };
 
-  const close = () => setDialog(undefined);
+  const close = () => {
+    setDialog(undefined);
+    setRoomDraft(undefined);
+    setFocusWall(undefined);
+  };
+  const openDimensions = (wall?: Wall) => {
+    touched.current = true;
+    setFocusWall(wall);
+    setDialog('room');
+  };
   const storageLabel = activeSave?.storage === 'account' ? 'Saved to account' : 'Saved in browser';
   const isWall = selection?.type === 'wall';
   const wallHex = room.walls[wall].color;
@@ -300,7 +321,9 @@ export function Editor() {
   const selectedCabinet = selection?.type === 'furniture' ? room.furniture.find(item => item.id === selection.id && hasCabinetDoors(item.kind)) : undefined;
   const swingLabel = selectedOpening ? selectedOpening.kind.toLowerCase() : 'cabinet doors';
   const swingIsOpen = (selectedOpening?.openAngle ?? selectedCabinet?.doorAngle ?? 0) > 0;
-  return <>
+  const previewRoom = roomDraft ?? room;
+  const dimensionText = `${formatMeasurement(previewRoom.dimensions.length, unit)} × ${formatMeasurement(previewRoom.dimensions.width, unit)} × ${formatMeasurement(previewRoom.dimensions.height, unit)}`;
+  return <MeasurementUnitContext.Provider value={unit}>
     <header className="topbar">
       <div className="brand">
         <span className="brand-mark"><PaintRoller size={20} strokeWidth={1.8} /></span>
@@ -334,7 +357,10 @@ export function Editor() {
               }}><Box size={17} /><span>{item.name}</span></button>
             </li>)}
           </ul>
-          <button type="button" className="button add-room" disabled={project.rooms.length >= LIMITS.rooms} onClick={() => setDialog('add')}><Plus size={17} /> Add room</button>
+          <button type="button" className="button add-room" disabled={project.rooms.length >= LIMITS.rooms} onClick={() => {
+            touched.current = true;
+            setDialog('add');
+          }}><Plus size={17} /> Add room</button>
         </section>
         <nav className="editor-navigation" aria-label="Editor tools">
           <h2>Edit room</h2>
@@ -347,9 +373,9 @@ export function Editor() {
         </nav>
         <section className="dimensions-card">
           <div><Ruler size={17} /><h2>Dimensions</h2>
-            <IconButton label="Edit room dimensions" onClick={() => setDialog('room')}><Settings2 size={15} /></IconButton>
+            <IconButton label="Edit room dimensions" onClick={() => openDimensions()}><Settings2 size={15} /></IconButton>
           </div>
-          <p>{room.dimensions.length} × {room.dimensions.width} × {room.dimensions.height} m</p>
+          <button type="button" className="dimension-summary" aria-label={`Edit room dimensions, ${dimensionText}`} onClick={() => openDimensions()}>{dimensionText}</button>
           <span>Length × width × height</span>
         </section>
       </aside>
@@ -374,7 +400,7 @@ export function Editor() {
           onAutoPlace={() => placeCeilingItem()} onCancel={() => setPlacingCeiling(false)}
           onToggleInterior={() => changeView(view === 'Interior' ? 'Ceiling' : 'Interior')} />}
         <div className="scene-stage">
-          <Preview room={room} view={view} tool={tool} selection={selection} command={command} interactive
+          <Preview room={previewRoom} view={view} tool={tool} selection={roomDraft && focusWall ? { type: 'wall', wall: focusWall } : selection} command={command} interactive={!roomDraft}
             dragFixtures={tab === 'Lighting' || tab === 'Ceiling'} dragInterior={tab === 'Furniture'} dragCeilingDecor={tab === 'Ceiling'}
             onPlaceCeiling={ceilingView && placingCeiling ? point => {
               if (point) placeCeilingItem(point);
@@ -411,7 +437,10 @@ export function Editor() {
                 Show swing in Top
               </button>}
             </div>}
-          {isWall && view === '3D' && <span className="scene-selection"><span style={colorStyle(wallHex)} /> {WALL_LABELS[wall]}</span>}
+          {isWall && (view === '3D' || view === 'Top') && <button type="button" className="scene-selection" onClick={() => openDimensions(wall)}
+            aria-label={`Edit ${WALL_LABELS[wall].toLowerCase()} dimensions`}><span style={colorStyle(wallHex)} />
+            {WALL_LABELS[wall]} · {formatMeasurement(wallSpan(previewRoom.dimensions, wall), unit)}
+          </button>}
           {!placingCeiling && <span className="scene-hint">{view === 'Ceiling' ? 'Drag an item to reposition it'
             : view === 'Ceiling Outside' ? 'Drag empty space to orbit · Drag decor to move it'
             : view === 'Interior' ? 'Drag empty space to look around' : tab === 'Lighting' ? 'Drag a fixture to move it'
@@ -454,14 +483,15 @@ export function Editor() {
       <span>{notice.text}</span>
       <IconButton label="Dismiss notification" onClick={() => setNotice(undefined)}><X size={16} /></IconButton>
     </div>}
-    {(dialog === 'room' || dialog === 'add') && <RoomDialog key={dialog} room={dialog === 'room' ? room : undefined}
-      canRemove={project.rooms.length > 1} onClose={close} onSave={(name, dimensions) => {
+    {(dialog === 'room' || dialog === 'add') && <RoomDialog key={dialog} room={dialog === 'room' ? room : undefined} preview={roomDraft}
+      unit={unit} onUnit={next => {
+        setUnit(next);
+        try { localStorage.setItem(MEASUREMENT_PREFERENCE, next); } catch {}
+      }} onPreview={setRoomDraft} focusWall={focusWall} canRemove={project.rooms.length > 1} onClose={close} onSave={draft => {
         if (dialog === 'room') {
-          const next = resizeRoom(room, name, dimensions);
-          if (!next) return 'The new dimensions would overlap openings or leave insufficient space for furniture.';
-          changeRoom(next);
+          if (draft !== room) changeRoom(draft);
         } else {
-          const next = newRoom(crypto.randomUUID(), name, dimensions);
+          const next = { ...draft, id: crypto.randomUUID() };
           edit(value => ({ ...value, rooms: [...value.rooms, next] }));
           switchRoom(next.id);
           setTab('Paint');
@@ -495,5 +525,5 @@ export function Editor() {
       else uploadId.current = undefined;
       notify('Signed out.');
     }} destroyUnsaved={dirty && activeSave?.storage === 'account'} onClose={close} />}
-  </>;
+  </MeasurementUnitContext.Provider>;
 }

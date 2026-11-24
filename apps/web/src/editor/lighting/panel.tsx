@@ -2,7 +2,7 @@
 
 import { Lamp, LampCeiling, LampFloor, LampWallDown, Lightbulb, LightbulbOff, Spotlight } from 'lucide-react';
 import {
-  FIXTURE_MOUNTS, LIGHTS, LIGHT_MOUNT_LABELS, LIMITS, MAX_LIGHT_LUMENS, clamp, fitLight, isPointFixture, isWallMount,
+  FIXTURE_MOUNTS, LIGHTS, LIGHT_MOUNT_LABELS, LIMITS, MAX_LIGHT_LUMENS, clamp, fitLight, isPointFixture, isWallMount, pointAlongWall, roomPlan, wallOffset,
   lightLumens, type Light, type Room,
 } from '@studio/model';
 import { NumberField, RangeField, SelectField } from '@/components/ui';
@@ -56,8 +56,7 @@ export function FixtureSettings({ light, room, onChange }: {
   light: Light; room: Room; onChange: (room: Room, historyGroup?: string) => void;
 }) {
   const mount = light.mount ?? 'Free';
-  const wall = isWallMount(mount);
-  const alongX = mount === 'north' || mount === 'south';
+  const wall = isWallMount(mount) ? roomPlan(room.dimensions).walls[mount] : undefined;
   const lumens = lightLumens(light);
   const { height } = room.dimensions;
   const update = (changes: Partial<Light>, field?: keyof Light) => {
@@ -90,8 +89,8 @@ export function FixtureSettings({ light, room, onChange }: {
         <NumberField label="X position" value={light.x} onChange={x => update({ x })} />
         <NumberField label="Z position" value={light.z} onChange={z => update({ z })} />
       </>}
-      {wall && <NumberField label="Along wall" value={alongX ? light.x : light.z}
-        onChange={value => update(alongX ? { x: value } : { z: value })} />}
+      {wall && <NumberField label="Offset from wall center" value={wallOffset(wall, light)}
+        onChange={value => update(pointAlongWall(wall, value))} />}
       {(wall || mount === 'Free') && <NumberField label="Height" value={light.y} min={0.25} max={height - 0.1}
         onChange={y => update({ y })} />}
     </div>

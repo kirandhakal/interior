@@ -1,3 +1,4 @@
+import { applyDecorators } from '@nestjs/common';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDefined, IsIn, IsInt, IsNumber, IsObject,
@@ -6,7 +7,7 @@ import {
 import {
   CEILING_DECOR, CEILING_DECOR_SCALE, CEILING_FINISHES, type CeilingDecorKind, type CeilingFinish,
   CURTAIN_LENGTHS, DAYLIGHTS, DIMENSION_BOUNDS, FINISHES, FURNITURE, FURNITURE_SCALE, HEX_COLOR, HINGE_SIDES,
-  LIGHTS, LIGHT_MOUNTS, LIMITS, MAX_LIGHT_LUMENS, OPENINGS, WALLS,
+  LIGHTS, LIGHT_MOUNTS, LIMITS, MAX_LIGHT_LUMENS, MAX_ROOM_COORDINATE, OPENINGS, WALLS, WALL_THICKNESS_BOUNDS,
   type Curtains, type Daylight, type Finish, type FurnitureKind, type LightKind, type LightMount, type Opening, type OpeningKind, type Project, type Wall,
 } from '../../../../packages/studio/model';
 
@@ -14,10 +15,23 @@ const idPattern = /^[a-zA-Z0-9_-]{1,64}$/;
 const trimmed = () => Transform(({ value }) => typeof value === 'string' ? value.trim() : value);
 const number = () => IsNumber({ allowInfinity: false, allowNaN: false });
 
+const optional = () => ValidateIf((_item, value) => value !== undefined);
+const thickness = () => applyDecorators(optional(), number(), Min(WALL_THICKNESS_BOUNDS[0]), Max(WALL_THICKNESS_BOUNDS[1]));
+
+class WallThicknessDto {
+  @thickness() north?: number;
+  @thickness() east?: number;
+  @thickness() south?: number;
+  @thickness() west?: number;
+}
+
 class DimensionsDto {
   @number() @Min(DIMENSION_BOUNDS.length[0]) @Max(DIMENSION_BOUNDS.length[1]) length!: number;
   @number() @Min(DIMENSION_BOUNDS.width[0]) @Max(DIMENSION_BOUNDS.width[1]) width!: number;
   @number() @Min(DIMENSION_BOUNDS.height[0]) @Max(DIMENSION_BOUNDS.height[1]) height!: number;
+  @optional() @number() @Min(DIMENSION_BOUNDS.length[0]) @Max(DIMENSION_BOUNDS.length[1]) southLength?: number;
+  @optional() @number() @Min(DIMENSION_BOUNDS.width[0]) @Max(DIMENSION_BOUNDS.width[1]) westLength?: number;
+  @optional() @IsObject() @ValidateNested() @Type(() => WallThicknessDto) wallThickness?: WallThicknessDto;
 }
 
 class PaintDto {
@@ -61,8 +75,8 @@ class DisplayDto {
 class FurnitureDto {
   @Matches(idPattern) id!: string;
   @IsIn(FURNITURE) kind!: FurnitureKind;
-  @number() @Min(-9) @Max(9) x!: number;
-  @number() @Min(-9) @Max(9) z!: number;
+  @number() @Min(-MAX_ROOM_COORDINATE) @Max(MAX_ROOM_COORDINATE) x!: number;
+  @number() @Min(-MAX_ROOM_COORDINATE) @Max(MAX_ROOM_COORDINATE) z!: number;
   @number() @Min(0) @Max(360) rotation!: number;
   @ValidateIf((_item, value) => value !== undefined) @number() @Min(FURNITURE_SCALE.min) @Max(FURNITURE_SCALE.max) scale?: number;
   @ValidateIf((_item, value) => value !== undefined) @Matches(HEX_COLOR) color?: string;
@@ -73,9 +87,9 @@ class FurnitureDto {
 class LightDto {
   @Matches(idPattern) id!: string;
   @IsIn(LIGHTS) kind!: LightKind;
-  @number() @Min(-9) @Max(9) x!: number;
+  @number() @Min(-MAX_ROOM_COORDINATE) @Max(MAX_ROOM_COORDINATE) x!: number;
   @number() @Min(0) @Max(6) y!: number;
-  @number() @Min(-9) @Max(9) z!: number;
+  @number() @Min(-MAX_ROOM_COORDINATE) @Max(MAX_ROOM_COORDINATE) z!: number;
   @number() @Min(0) @Max(100) brightness!: number;
   @number() @Min(2300) @Max(7500) warmth!: number;
   @number() @Min(0) @Max(360) direction!: number;
@@ -94,8 +108,8 @@ class PaintOptionDto {
 class CeilingDecorDto {
   @Matches(idPattern) id!: string;
   @IsIn(CEILING_DECOR) kind!: CeilingDecorKind;
-  @number() @Min(-9) @Max(9) x!: number;
-  @number() @Min(-9) @Max(9) z!: number;
+  @number() @Min(-MAX_ROOM_COORDINATE) @Max(MAX_ROOM_COORDINATE) x!: number;
+  @number() @Min(-MAX_ROOM_COORDINATE) @Max(MAX_ROOM_COORDINATE) z!: number;
   @number() @Min(0) @Max(360) rotation!: number;
   @number() @Min(CEILING_DECOR_SCALE.min) @Max(CEILING_DECOR_SCALE.max) scale!: number;
   @Matches(HEX_COLOR) color!: string;

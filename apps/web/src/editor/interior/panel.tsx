@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Armchair, Copy, Plus, Search } from 'lucide-react';
 import {
   FURNITURE, FURNITURE_SCALE, INTERIOR_CATALOG, INTERIOR_CATEGORIES, LIMITS, clamp,
-  fitFurniture, furnitureBounds, furnitureFitsRoom, getDisplay, hasCabinetDoors, hasDisplay,
+  fitFurniture, furnitureFitsRoom, getDisplay, hasCabinetDoors, hasDisplay, roomPlan,
   type DisplaySettings, type Furniture, type FurnitureKind, type Room,
 } from '@studio/model';
 import { NumberField, RangeField, SelectField } from '@/components/ui';
@@ -100,7 +100,7 @@ export function InteriorPanel({ room, selection, onAddInterior, onSelect, onChan
 function ItemSettings({ item, room, atLimit, onChange, onDuplicate }: {
   item: Furniture; room: Room; atLimit: boolean; onChange: (changes: Partial<Furniture>, field?: string) => void; onDuplicate: () => void;
 }) {
-  const bounds = furnitureBounds(room.dimensions, item);
+  const bounds = roomPlan(room.dimensions).bounds;
   const size = Math.round((item.scale ?? 1) * 100);
   const display = item.display ?? getDisplay(item.kind);
   const setDisplay = (changes: Partial<DisplaySettings>, field?: string) => onChange({ display: { ...display, ...changes } }, field);
@@ -113,8 +113,8 @@ function ItemSettings({ item, room, atLimit, onChange, onDuplicate }: {
       </button>
     </div>
     <div className="two-fields">
-      <NumberField label="X position" value={item.x} min={-bounds.x} max={bounds.x} onChange={x => onChange({ x })} />
-      <NumberField label="Z position" value={item.z} min={-bounds.z} max={bounds.z} onChange={z => onChange({ z })} />
+      <NumberField label="X position" value={item.x} min={bounds.minX} max={bounds.maxX} onChange={x => onChange({ x })} />
+      <NumberField label="Z position" value={item.z} min={bounds.minZ} max={bounds.maxZ} onChange={z => onChange({ z })} />
     </div>
     <RangeField label="Rotation" value={item.rotation} min={0} max={360} step={1} unit="°"
       onChange={rotation => onChange({ rotation }, 'rotation')} />

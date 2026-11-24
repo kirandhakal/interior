@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { LampCeiling, Plus } from 'lucide-react';
 import {
   CEILING_CATALOG, CEILING_DECOR, CEILING_DECOR_DRAG_TYPE, CEILING_DECOR_SCALE, CEILING_FINISHES,
-  LIMITS, ceilingDecorBounds, clamp, fitCeilingDecor,
+  LIMITS, clamp, fitCeilingDecor, roomPlan,
   type CeilingDecor, type CeilingDecorKind, type LightKind, type Room,
 } from '@studio/model';
 import { NumberField, RangeField, SelectField } from '@/components/ui';
@@ -89,12 +89,12 @@ function DecorSettings({ item, room, onChange }: {
   room: Room;
   onChange: (changes: Partial<CeilingDecor>, field?: keyof CeilingDecor) => void;
 }) {
-  const bounds = ceilingDecorBounds(room.dimensions, item);
+  const bounds = roomPlan(room.dimensions).bounds;
   return <section className="object-details" aria-label={`${item.kind} settings`}>
     <h3>{item.kind} settings</h3>
     <div className="two-fields">
-      <NumberField label="X position" value={item.x} min={-bounds.x} max={bounds.x} onChange={x => onChange({ x })} />
-      <NumberField label="Z position" value={item.z} min={-bounds.z} max={bounds.z} onChange={z => onChange({ z })} />
+      <NumberField label="X position" value={item.x} min={bounds.minX} max={bounds.maxX} onChange={x => onChange({ x })} />
+      <NumberField label="Z position" value={item.z} min={bounds.minZ} max={bounds.maxZ} onChange={z => onChange({ z })} />
     </div>
     <RangeField label="Rotation" value={item.rotation} min={0} max={360} step={1} unit="°"
       onChange={rotation => onChange({ rotation }, 'rotation')} />

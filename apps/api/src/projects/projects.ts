@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository, TypeOrmModule } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { FIXTURE_MOUNTS, fitCeilingDecor, fitLight, furnitureBounds, furnitureFitsRoom, hasCabinetDoors, hasDisplay, openingFits, type Project, type SavedProject } from '../../../../packages/studio/model';
+import { FIXTURE_MOUNTS, dimensionError, fitCeilingDecor, fitLight, furniturePlacementFits, hasCabinetDoors, hasDisplay, openingFits, type Project, type SavedProject } from '../../../../packages/studio/model';
 import { AuthModule, SessionGuard, type AuthRequest } from '../auth/auth';
 import { ProjectEntity } from '../database/entities';
 import { CreateProjectDto, UpdateProjectDto } from './project.dto';
@@ -16,6 +16,8 @@ function assertUnique(items: { id: string }[], label: string) {
 function checkLayout(project: Project) {
   assertUnique(project.rooms, 'rooms');
   for (const room of project.rooms) {
+    const invalidDimensions = dimensionError(room.dimensions);
+    if (invalidDimensions) throw new BadRequestException(`${room.name}. ${invalidDimensions}`);
     for (const kind of ['openings', 'furniture', 'lights', 'options'] as const) assertUnique(room[kind], `${room.name} ${kind}`);
     const decor = room.ceilingDecor ?? [];
     assertUnique(decor, `${room.name} ceiling decor`);
@@ -38,8 +40,7 @@ function checkLayout(project: Project) {
       if (item.display && (!hasDisplay(item.kind) || (item.kind === 'TV' && item.display.count !== 1))) {
         throw new BadRequestException(`Invalid display settings for ${item.kind} in ${room.name}.`);
       }
-      const bounds = furnitureBounds(room.dimensions, item);
-      if (!furnitureFitsRoom(room.dimensions, item) || Math.abs(item.x) > bounds.x + 0.002 || Math.abs(item.z) > bounds.z + 0.002) {
+      if (!furniturePlacementFits(room.dimensions, item)) {
         throw new BadRequestException(`Furniture extends outside ${room.name}.`);
       }
     }

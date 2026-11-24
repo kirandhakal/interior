@@ -1,11 +1,13 @@
 import {
-  CanvasTexture, Group, InstancedMesh, Matrix4, Mesh, MeshStandardMaterial, PlaneGeometry, RepeatWrapping, SRGBColorSpace,
+  CanvasTexture, Group, InstancedMesh, Matrix4, Mesh, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace,
 } from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import type { CeilingFinish, Dimensions } from '@studio/model';
+import { clipPlan, planArea, roomContains, roomPlan, type CeilingFinish, type Dimensions } from '@studio/model';
+import { planFace, planPrism } from './plan-mesh';
 
 export function createCeilingFinish(dimensions: Dimensions, finish: CeilingFinish) {
-  const { length, width, height } = dimensions;
+  const { height } = dimensions;
+  const { bounds: { length, width, minX, minZ }, inner, edges } = roomPlan(dimensions);
   const group = new Group();
   const material = new MeshStandardMaterial({ color: '#f2e4cf', roughness: 0.87 });
   if (finish === '3D panels') {
@@ -16,18 +18,37 @@ export function createCeilingFinish(dimensions: Dimensions, finish: CeilingFinis
     const geometry = new RoundedBoxGeometry(tileWidth - 0.017, 0.095, tileDepth - 0.017, 2, 0.038);
     const panels = new InstancedMesh(geometry, material, columns * rows);
     const matrix = new Matrix4();
+    const clippedPanels: ReturnType<typeof planPrism>[] = [];
+    const halfX = (tileWidth - 0.017) / 2;
+    const halfZ = (tileDepth - 0.017) / 2;
+    let count = 0;
     for (let row = 0; row < rows; row++) {
       for (let column = 0; column < columns; column++) {
-        matrix.makeTranslation((column + 0.5) * tileWidth - length / 2, height - 0.045, (row + 0.5) * tileDepth - width / 2);
-        panels.setMatrixAt(row * columns + column, matrix);
+        const x = minX + (column + 0.5) * tileWidth;
+        const z = minZ + (row + 0.5) * tileDepth;
+        const tile = [{ x: x - halfX, z: z - halfZ }, { x: x + halfX, z: z - halfZ },
+          { x: x + halfX, z: z + halfZ }, { x: x - halfX, z: z + halfZ }];
+        if (tile.every(point => roomContains(dimensions, point))) {
+          matrix.makeTranslation(x, height - 0.045, z);
+          panels.setMatrixAt(count++, matrix);
+        } else {
+          const clipped = edges.reduce((points, wall) => clipPlan(points, wall), tile);
+          if (planArea(clipped) < 1e-6) continue;
+          const boundaryTile = planPrism(clipped, height - 0.0925, 0.095);
+          const mesh = new Mesh(boundaryTile, material);
+          mesh.receiveShadow = true;
+          group.add(mesh);
+          clippedPanels.push(boundaryTile);
+        }
       }
     }
+    panels.count = count;
     panels.receiveShadow = true;
     group.add(panels);
-    return { group, dispose() { panels.dispose(); geometry.dispose(); material.dispose(); } };
+    return { group, dispose() { panels.dispose(); geometry.dispose(); clippedPanels.forEach(tile => tile.dispose()); material.dispose(); } };
   }
 
-  const geometry = new PlaneGeometry(length, width);
+  const geometry = planFace(inner, height - 0.002, true);
   const map = patternTexture(finish, length, width);
   material.color.set('#ffffff');
   material.map = map;
@@ -38,8 +59,6 @@ export function createCeilingFinish(dimensions: Dimensions, finish: CeilingFinis
     material.bumpScale = 0.024;
   }
   const panel = new Mesh(geometry, material);
-  panel.rotation.x = Math.PI / 2;
-  panel.position.y = height - 0.002;
   panel.receiveShadow = true;
   group.add(panel);
   return { group, dispose() { geometry.dispose(); map.dispose(); material.dispose(); } };

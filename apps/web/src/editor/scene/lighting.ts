@@ -2,7 +2,7 @@ import {
   BoxGeometry, CatmullRomCurve3, Color, CylinderGeometry, DirectionalLight, DoubleSide, Group, HemisphereLight, Mesh, MeshStandardMaterial,
   PointLight, SphereGeometry, SpotLight, TorusGeometry, TubeGeometry, Vector3, type BufferGeometry,
 } from 'three';
-import { isPointFixture, isWallMount, type Daylight, type Light, type LightKind, type Wall } from '@studio/model';
+import { isPointFixture, isWallMount, roomPlan, type Daylight, type Dimensions, type Light, type LightKind } from '@studio/model';
 
 const conditions: Record<Daylight, { sun: string; sky: string; strength: number; ambient: number; direction: [number, number, number] }> = {
   Morning: { sun: '#fff0d5', sky: '#fff7e4', strength: 2.0, ambient: 1.42, direction: [-8, 5, 2] },
@@ -63,7 +63,6 @@ function kelvin(k: number) {
   return new Color(`rgb(${[red, green, blue].map(channel => Math.round(Math.min(255, Math.max(0, channel)))).join(',')})`);
 }
 
-const wallHeading: Record<Wall, number> = { north: 0, east: -Math.PI / 2, south: Math.PI, west: Math.PI / 2 };
 const vertical = new Vector3(0, 1, 0);
 const horizontal = new Vector3(1, 0, 0);
 const beamWidths: Partial<Record<LightKind, number>> = { Spotlight: 0.42, 'Wall sconce': 0.84, 'LED strip': 1.28 };
@@ -165,7 +164,7 @@ function createHousing(kind: LightKind) {
   };
 }
 
-export function createFixture(light: Light) {
+export function createFixture(light: Light, dimensions: Dimensions) {
   const group = new Group();
   const model = new Group();
   model.userData.hit = { type: 'light', id: light.id };
@@ -177,9 +176,9 @@ export function createFixture(light: Light) {
   const color = new Color();
   const aim = new Vector3();
 
-  const update = (value: Light) => {
-    const wall = isWallMount(value.mount) ? value.mount : undefined;
-    const heading = wall ? wallHeading[wall] : 0;
+  const update = (value: Light, dimensions: Dimensions) => {
+    const wall = isWallMount(value.mount) ? roomPlan(dimensions).walls[value.mount] : undefined;
+    const heading = wall ? -Math.atan2(wall.tangent.z, wall.tangent.x) : 0;
     group.position.set(value.x, value.y, value.z);
     model.rotation.y = heading;
     housing.body.rotation.x = wall ? -Math.PI / 2 : 0;
@@ -201,6 +200,6 @@ export function createFixture(light: Light) {
     housing.diffuser.emissiveIntensity = Math.min(1.6, Math.sqrt(beam.intensity) / 8);
   };
 
-  update(light);
+  update(light, dimensions);
   return { group, model, update, dispose: () => { housing.dispose(); beam.dispose(); } };
 }

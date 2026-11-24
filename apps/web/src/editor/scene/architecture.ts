@@ -1,19 +1,14 @@
 import {
-  BoxGeometry, BufferGeometry, DoubleSide, EdgesGeometry, Group, LineBasicMaterial, LineSegments, Mesh, MeshStandardMaterial, PlaneGeometry, Vector3,
+  BufferGeometry, DoubleSide, EdgesGeometry, Group, LineBasicMaterial, LineSegments, Mesh, MeshStandardMaterial, PlaneGeometry, Vector3,
 } from 'three';
 import { ParametricGeometry } from 'three/addons/geometries/ParametricGeometry.js';
-import { WALLS, wallSpan, type Curtains, type Dimensions, type Opening, type Room, type Wall } from '@studio/model';
+import { DEFAULT_WALL_THICKNESS, WALLS, clamp, roomPlan, wallOffset, type Curtains, type Dimensions, type Opening, type Room, type Wall } from '@studio/model';
 import type { SceneAssets } from './furniture';
+import { planFace, planPrism } from './plan-mesh';
 import { box, cylinder } from './primitives';
 import { createSwing, type Swing } from './swing';
 import { floorTexture } from './textures';
 
-export const WALL_THICKNESS = 0.16;
-export const wallNormals: Record<Wall, Vector3> = {
-  north: new Vector3(0, 0, -1), east: new Vector3(1, 0, 0),
-  south: new Vector3(0, 0, 1), west: new Vector3(-1, 0, 0),
-};
-const wallAngles: Record<Wall, number> = { north: 0, east: -Math.PI / 2, south: Math.PI, west: Math.PI / 2 };
 export const roughness = { Matte: 0.98, Eggshell: 0.65, Satin: 0.33 };
 
 export function disposeGeometry(group: Group) {
@@ -23,32 +18,32 @@ export function disposeGeometry(group: Group) {
 }
 
 export function createFloor(dimensions: Dimensions, assets: SceneAssets) {
-  const { length, width } = dimensions;
+  const { inner, outer, bounds: { length, width } } = roomPlan(dimensions);
   const group = new Group();
-  box(group, assets.base, length + WALL_THICKNESS, 0.22, width + WALL_THICKNESS, 0, -0.12, 0, 0.025);
-  box(group, assets.edge, length + WALL_THICKNESS + 0.028, 0.039, width + WALL_THICKNESS + 0.028, 0, -0.224, 0, 0.016);
+  const slab = new Mesh(planPrism(outer, -0.23, 0.22), assets.base);
+  slab.castShadow = slab.receiveShadow = true;
+  const edge = new Mesh(planPrism(outer, -0.244, 0.039), assets.edge);
+  edge.castShadow = edge.receiveShadow = true;
   const map = floorTexture(length, width);
   const material = new MeshStandardMaterial({ map, roughness: 0.83 });
-  const floor = new Mesh(new PlaneGeometry(length + WALL_THICKNESS, width + WALL_THICKNESS), material);
-  floor.rotation.x = -Math.PI / 2;
+  const floor = new Mesh(planFace(inner, 0), material);
   floor.receiveShadow = true;
-  group.add(floor);
+  group.add(slab, edge, floor);
   return { group, dispose: () => { disposeGeometry(group); map.dispose(); material.dispose(); } };
 }
 
-export function createCeiling({ length, width, height }: Dimensions) {
+export function createCeiling(dimensions: Dimensions) {
+  const { height } = dimensions;
+  const { inner, outer } = roomPlan(dimensions);
   const group = new Group();
   const plaster = new MeshStandardMaterial({ color: '#eee9df', roughness: 0.96 });
   const edge = new MeshStandardMaterial({ color: '#ddd5c7', roughness: 0.92 });
   const thickness = 0.095;
-  const slab = box(group, plaster, length + WALL_THICKNESS * 2, thickness, width + WALL_THICKNESS * 2,
-    0, height + thickness / 2, 0);
-  slab.castShadow = false;
+  const slab = new Mesh(planPrism(outer, height, thickness), plaster);
+  slab.receiveShadow = true;
+  group.add(slab);
 
-  const corners = [
-    new Vector3(-length / 2, height, -width / 2), new Vector3(length / 2, height, -width / 2),
-    new Vector3(length / 2, height, width / 2), new Vector3(-length / 2, height, width / 2),
-  ];
+  const corners = inner.map(point => new Vector3(point.x, height, point.z));
   const edges = corners.flatMap((point, index) => [point, corners[(index + 1) % corners.length]]);
   const boundaryStroke = new LineBasicMaterial({ color: '#465a3b', depthTest: false, depthWrite: false });
   const boundary = new LineSegments(new BufferGeometry().setFromPoints(edges), boundaryStroke);
@@ -58,14 +53,11 @@ export function createCeiling({ length, width, height }: Dimensions) {
 
   // Retain the wall-side section of the slab when the rest is cut away.
   const rim = new Map<Wall, Mesh>();
-  for (const wall of WALLS) {
-    const normal = wallNormals[wall];
-    const northSouth = normal.z !== 0;
-    const strip = 0.34;
-    const mesh = box(group, edge, northSouth ? length + WALL_THICKNESS * 2 : strip, thickness,
-      northSouth ? strip : width, normal.x * (length / 2 + WALL_THICKNESS - strip / 2),
-      height + thickness / 2, normal.z * (width / 2 + WALL_THICKNESS - strip / 2));
-    mesh.castShadow = false;
+  for (const [index, wall] of WALLS.entries()) {
+    const next = (index + 1) % WALLS.length;
+    const mesh = new Mesh(planPrism([inner[index], inner[next], outer[next], outer[index]], height, thickness), edge);
+    mesh.receiveShadow = true;
+    group.add(mesh);
     rim.set(wall, mesh);
   }
   return { group, slab, rim, boundary, dispose: () => { disposeGeometry(group); plaster.dispose(); edge.dispose(); boundaryStroke.dispose(); } };
@@ -105,20 +97,22 @@ function windowCurtains(opening: Opening, roomHeight: number, span: number, a: S
   };
 }
 
-function createOpening(opening: Opening, a: SceneAssets, roomHeight: number, span: number) {
+function createOpening(opening: Opening, a: SceneAssets, roomHeight: number, span: number, thickness: number) {
   const { width, height, offset, sill } = opening;
   const group = new Group();
-  group.position.set(offset, sill, 0);
+  group.position.set(offset, sill, -DEFAULT_WALL_THICKNESS / 2);
   group.userData.hit = { type: 'opening', id: opening.id };
   const rail = 0.045;
   const swings: Swing[] = [];
   let curtains: ReturnType<typeof windowCurtains> | undefined;
-  for (const x of [-width / 2, width / 2]) box(group, a.trim, rail, height + rail, 0.245, x, height / 2, 0.005);
-  box(group, a.trim, width + rail, rail, 0.245, 0, height, 0.005);
+  const frameDepth = thickness + 0.085;
+  const frameZ = (DEFAULT_WALL_THICKNESS - thickness) / 2 + 0.005;
+  for (const x of [-width / 2, width / 2]) box(group, a.trim, rail, height + rail, frameDepth, x, height / 2, frameZ);
+  box(group, a.trim, width + rail, rail, frameDepth, 0, height, frameZ);
   if (opening.kind === 'Window') {
-    box(group, a.trim, width + 0.10, 0.062, 0.28, 0, 0, 0.031);
+    box(group, a.trim, width + 0.10, 0.062, thickness + 0.12, 0, 0, frameZ + 0.026);
     const backdrop = new Mesh(new PlaneGeometry(width - 0.025, height - 0.035), a.glass);
-    backdrop.position.set(0, height / 2, -0.115);
+    backdrop.position.set(0, height / 2, -thickness + 0.045);
     group.add(backdrop);
     const sashWidth = width / 2 - 0.039;
     const sashHeight = height - 0.058;
@@ -174,20 +168,34 @@ export function sameOpeningGeometry(a: Opening, b: Opening) {
 }
 
 export function createWall(room: Room, wall: Wall, openings: Opening[], a: SceneAssets) {
-  const { length, width, height } = room.dimensions;
-  const span = wallSpan(room.dimensions, wall);
+  const { height } = room.dimensions;
+  const { walls, outer } = roomPlan(room.dimensions);
+  const plan = walls[wall];
+  const { span, thickness, midpoint, tangent } = plan;
   const half = span / 2;
   const group = new Group();
-  const normal = wallNormals[wall];
-  group.position.set(normal.x * (length + WALL_THICKNESS) / 2, 0, normal.z * (width + WALL_THICKNESS) / 2);
-  group.rotation.y = wallAngles[wall];
+  group.position.set(midpoint.x, 0, midpoint.z);
+  group.rotation.y = -Math.atan2(tangent.z, tangent.x);
   group.userData.hit = { type: 'wall', wall };
   const material = new MeshStandardMaterial();
   const paint = room.walls[wall];
   material.color.set(paint.color);
   material.roughness = roughness[paint.finish];
-  const left = -half - WALL_THICKNESS;
-  const right = half + WALL_THICKNESS;
+  const left = -half;
+  const right = half;
+  const index = WALLS.indexOf(wall);
+  const outerLeft = wallOffset(plan, outer[index]);
+  const outerRight = wallOffset(plan, outer[(index + 1) % WALLS.length]);
+  const section = (start: number, end: number) => [
+    { x: start, z: 0 }, { x: end, z: 0 },
+    { x: end === right ? outerRight : clamp(end, outerLeft, outerRight), z: -thickness },
+    { x: start === left ? outerLeft : clamp(start, outerLeft, outerRight), z: -thickness },
+  ];
+  const solid = (start: number, end: number, bottom: number, top: number) => {
+    const mesh = new Mesh(planPrism(section(start, end), bottom, top - bottom), material);
+    mesh.castShadow = mesh.receiveShadow = true;
+    group.add(mesh);
+  };
   const cuts = [left, ...openings.flatMap(o => [o.offset - o.width / 2, o.offset + o.width / 2]), right].sort((a, b) => a - b);
   for (let i = 0; i < cuts.length - 1; i++) {
     const start = cuts[i];
@@ -198,23 +206,23 @@ export function createWall(room: Room, wall: Wall, openings: Opening[], a: Scene
     const voids = openings.filter(o => Math.abs(mid - o.offset) < o.width / 2).sort((a, b) => a.sill - b.sill);
     let bottom = 0;
     for (const o of voids) {
-      if (o.sill > bottom) box(group, material, size, o.sill - bottom, WALL_THICKNESS, mid, (o.sill + bottom) / 2, 0);
+      if (o.sill > bottom) solid(start, end, bottom, o.sill);
       bottom = o.sill + o.height;
     }
-    if (height > bottom) box(group, material, size, height - bottom, WALL_THICKNESS, mid, (height + bottom) / 2, 0);
-    if (voids.every(o => o.sill >= 0.105)) box(group, a.trim, size, 0.105, 0.026, mid, 0.0525, 0.091);
+    if (height > bottom) solid(start, end, bottom, height);
+    if (voids.every(o => o.sill >= 0.105)) box(group, a.trim, size, 0.105, 0.026, mid, 0.0525, 0.011);
   }
-  const openingModels = new Map(openings.map(opening => [opening.id, createOpening(opening, a, height, span)]));
+  const openingModels = new Map(openings.map(opening => [opening.id, createOpening(opening, a, height, span, thickness)]));
   for (const model of openingModels.values()) group.add(model.group);
-  const outlineGeometry = new BoxGeometry(span + WALL_THICKNESS, height, WALL_THICKNESS);
+  const outlineGeometry = planPrism(section(left, right), 0, height);
   const edges = new EdgesGeometry(outlineGeometry);
   outlineGeometry.dispose();
   const stroke = new LineBasicMaterial({ color: '#596449', transparent: true, opacity: 0.72 });
   const outline = new LineSegments(edges, stroke);
-  outline.position.y = height / 2;
   outline.visible = false;
   group.add(outline);
-  return { group, outline, material, openings, openingModels, dispose() {
+  const normal = new Vector3(plan.normal.x, 0, plan.normal.z);
+  return { group, outline, material, openings, openingModels, normal, dispose() {
     disposeGeometry(group);
     for (const model of openingModels.values()) model.dispose();
     material.dispose();

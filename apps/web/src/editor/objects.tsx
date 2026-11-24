@@ -4,7 +4,7 @@ import {
   Armchair, DoorOpen, Lightbulb, Plus, RectangleVertical,
 } from 'lucide-react';
 import {
-  CURTAIN_LENGTHS, HINGE_SIDES, LIMITS, OPENINGS, WALL_LABELS, WALLS, fitOpening,
+  CURTAIN_LENGTHS, HINGE_SIDES, LIMITS, OPENINGS, OPENING_EDGE_CLEARANCE, WALL_LABELS, WALLS, fitOpening,
   openingFits, wallSpan, type FurnitureKind, type LightKind, type Opening, type Room, type Wall,
 } from '@studio/model';
 import { NumberField, RangeField, SelectField } from '@/components/ui';
@@ -80,8 +80,8 @@ function OpeningControls({ room, wall, selection, onSelect, onChange, notify }: 
       <h3>{active.kind} placement</h3>
       <SelectField label="Wall" values={WALLS} value={active.wall} display={side => WALL_LABELS[side]} onChange={side => update(active, { wall: side })} />
       <div className="two-fields">
-        <NumberField label="Width" value={active.width} min={0.4} max={wallSpan(room.dimensions, active.wall) - 0.16} onChange={width => update(active, { width })} />
-        <NumberField label="Height" value={active.height} min={0.4} max={room.dimensions.height - 0.08} onChange={height => update(active, { height })} />
+        <NumberField label="Width" value={active.width} min={0.4} max={wallSpan(room.dimensions, active.wall) - 2 * OPENING_EDGE_CLEARANCE} onChange={width => update(active, { width })} />
+        <NumberField label="Height" value={active.height} min={0.4} max={room.dimensions.height - OPENING_EDGE_CLEARANCE} onChange={height => update(active, { height })} />
         <NumberField label="Offset from center" value={active.offset} onChange={offset => update(active, { offset })} />
         {active.kind === 'Window' && <NumberField label="Sill height" min={0} value={active.sill} onChange={sill => update(active, { sill })} />}
       </div>
