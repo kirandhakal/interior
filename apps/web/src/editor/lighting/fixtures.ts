@@ -1,4 +1,4 @@
-import { FIXTURE_MOUNTS, fitLight, isWallMount, type Light, type LightKind, type LightMount, type Room, type Wall } from '@studio/model';
+import { fixtureMounts, fitLight, isWallMount, type Light, type LightKind, type LightMount, type Room, type Wall } from '@studio/model';
 
 export const FIXTURE_DRAG_TYPE = 'application/x-room-paint-fixture';
 
@@ -17,7 +17,7 @@ const defaultLumens: Record<LightKind, number> = {
 };
 
 export function newFixture(room: Room, kind: LightKind, wall: Wall, placement?: LightPlacement): Light {
-  const available = FIXTURE_MOUNTS[kind];
+  const available = fixtureMounts(kind, room.dimensions);
   const mount = placement?.mount ?? (kind === 'Wall sconce' ? wall : available[0]);
   const { height } = room.dimensions;
   const position = placement ?? {

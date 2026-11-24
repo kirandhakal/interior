@@ -2,14 +2,15 @@ import { applyDecorators } from '@nestjs/common';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDefined, IsIn, IsInt, IsNumber, IsObject,
-  IsString, IsUUID, Length, Matches, Max, Min, ValidateIf, ValidateNested,
+  IsString, IsUUID, Length, Matches, Max, Min, Validate, ValidateIf, ValidateNested, ValidatorConstraint,
 } from 'class-validator';
 import {
   CEILING_DECOR, CEILING_DECOR_SCALE, CEILING_FINISHES, type CeilingDecorKind, type CeilingFinish,
   CURTAIN_LENGTHS, DAYLIGHTS, DIMENSION_BOUNDS, FINISHES, FURNITURE, FURNITURE_SCALE, HEX_COLOR, HINGE_SIDES,
-  LIGHTS, LIGHT_MOUNTS, LIMITS, MAX_LIGHT_LUMENS, MAX_ROOM_COORDINATE, OPENINGS, WALLS, WALL_THICKNESS_BOUNDS,
-  type Curtains, type Daylight, type Finish, type FurnitureKind, type LightKind, type LightMount, type Opening, type OpeningKind, type Project, type Wall,
+  LIGHTS, LIMITS, MAX_LIGHT_LUMENS, MAX_ROOM_COORDINATE, OPENINGS, WALL_ID_PATTERN, WALL_THICKNESS_BOUNDS,
+  type Curtains, type Daylight, type FurnitureKind, type LightKind, type LightMount, type Opening, type OpeningKind, type Project, type Wall, type WallPaint,
 } from '../../../../packages/studio/model';
+import { MAX_PLAN_VERTICES } from '../../../../packages/studio/polygon';
 
 const idPattern = /^[a-zA-Z0-9_-]{1,64}$/;
 const trimmed = () => Transform(({ value }) => typeof value === 'string' ? value.trim() : value);
@@ -25,25 +26,35 @@ class WallThicknessDto {
   @thickness() west?: number;
 }
 
+class OutlineVertexDto {
+  @Matches(WALL_ID_PATTERN) wallId!: Wall;
+  @number() @Min(-MAX_ROOM_COORDINATE) @Max(MAX_ROOM_COORDINATE) x!: number;
+  @number() @Min(-MAX_ROOM_COORDINATE) @Max(MAX_ROOM_COORDINATE) z!: number;
+  @thickness() thickness?: number;
+}
+
 class DimensionsDto {
-  @number() @Min(DIMENSION_BOUNDS.length[0]) @Max(DIMENSION_BOUNDS.length[1]) length!: number;
-  @number() @Min(DIMENSION_BOUNDS.width[0]) @Max(DIMENSION_BOUNDS.width[1]) width!: number;
+  @number() @Min(0) @Max(2 * MAX_ROOM_COORDINATE) length!: number;
+  @number() @Min(0) @Max(2 * MAX_ROOM_COORDINATE) width!: number;
   @number() @Min(DIMENSION_BOUNDS.height[0]) @Max(DIMENSION_BOUNDS.height[1]) height!: number;
   @optional() @number() @Min(DIMENSION_BOUNDS.length[0]) @Max(DIMENSION_BOUNDS.length[1]) southLength?: number;
   @optional() @number() @Min(DIMENSION_BOUNDS.width[0]) @Max(DIMENSION_BOUNDS.width[1]) westLength?: number;
   @optional() @IsObject() @ValidateNested() @Type(() => WallThicknessDto) wallThickness?: WallThicknessDto;
+  @optional() @IsArray() @ArrayMinSize(3) @ArrayMaxSize(MAX_PLAN_VERTICES)
+  @IsObject({ each: true }) @ValidateNested({ each: true }) @Type(() => OutlineVertexDto) outline?: OutlineVertexDto[];
 }
 
-class PaintDto {
-  @Matches(HEX_COLOR) color!: string;
-  @IsIn(FINISHES) finish!: Finish;
-}
+@ValidatorConstraint({ name: 'wallPaint' })
+class WallPaintConstraint {
+  validate(value: unknown) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const entries = Object.entries(value);
+    return entries.length >= 3 && entries.length <= MAX_PLAN_VERTICES && entries.every(([key, paint]) =>
+      WALL_ID_PATTERN.test(key) && paint && typeof paint === 'object' && !Array.isArray(paint) &&
+      Object.keys(paint).length === 2 && typeof paint.color === 'string' && HEX_COLOR.test(paint.color) && FINISHES.includes(paint.finish));
+  }
 
-class WallPaintDto {
-  @IsDefined() @IsObject() @ValidateNested() @Type(() => PaintDto) north!: PaintDto;
-  @IsDefined() @IsObject() @ValidateNested() @Type(() => PaintDto) east!: PaintDto;
-  @IsDefined() @IsObject() @ValidateNested() @Type(() => PaintDto) south!: PaintDto;
-  @IsDefined() @IsObject() @ValidateNested() @Type(() => PaintDto) west!: PaintDto;
+  defaultMessage() { return 'Each wall must have a valid paint color and finish.'; }
 }
 
 class CurtainsDto implements Curtains {
@@ -55,8 +66,8 @@ class CurtainsDto implements Curtains {
 class OpeningDto {
   @Matches(idPattern) id!: string;
   @IsIn(OPENINGS) kind!: OpeningKind;
-  @IsIn(WALLS) wall!: Wall;
-  @number() @Min(-9) @Max(9) offset!: number;
+  @Matches(WALL_ID_PATTERN) wall!: Wall;
+  @number() @Min(-MAX_ROOM_COORDINATE * Math.SQRT2) @Max(MAX_ROOM_COORDINATE * Math.SQRT2) offset!: number;
   @number() @Min(0) @Max(6) sill!: number;
   @number() @Min(0.4) @Max(18) width!: number;
   @number() @Min(0.4) @Max(6) height!: number;
@@ -94,7 +105,7 @@ class LightDto {
   @number() @Min(2300) @Max(7500) warmth!: number;
   @number() @Min(0) @Max(360) direction!: number;
   @number() @Min(0) @Max(75) tilt!: number;
-  @ValidateIf((_light, value) => value !== undefined) @IsIn(LIGHT_MOUNTS) mount?: LightMount;
+  @optional() @Matches(/^(Ceiling|Floor|Free|north|east|south|west|wall-[a-zA-Z0-9_-]{1,59})$/) mount?: LightMount;
   @ValidateIf((_light, value) => value !== undefined) @IsInt() @Min(0) @Max(MAX_LIGHT_LUMENS) lumens?: number;
   @ValidateIf((_light, value) => value !== undefined) @IsBoolean() enabled?: boolean;
 }
@@ -102,7 +113,7 @@ class LightDto {
 class PaintOptionDto {
   @Matches(idPattern) id!: string;
   @trimmed() @IsString() @Length(1, LIMITS.name) name!: string;
-  @IsDefined() @IsObject() @ValidateNested() @Type(() => WallPaintDto) walls!: WallPaintDto;
+  @IsDefined() @IsObject() @Validate(WallPaintConstraint) walls!: WallPaint;
 }
 
 class CeilingDecorDto {
@@ -119,7 +130,7 @@ class RoomDto {
   @Matches(idPattern) id!: string;
   @trimmed() @IsString() @Length(1, LIMITS.name) name!: string;
   @IsDefined() @IsObject() @ValidateNested() @Type(() => DimensionsDto) dimensions!: DimensionsDto;
-  @IsDefined() @IsObject() @ValidateNested() @Type(() => WallPaintDto) walls!: WallPaintDto;
+  @IsDefined() @IsObject() @Validate(WallPaintConstraint) walls!: WallPaint;
   @IsIn(DAYLIGHTS) daylight!: Daylight;
   @IsArray() @ArrayMaxSize(LIMITS.openings) @IsObject({ each: true }) @ValidateNested({ each: true }) @Type(() => OpeningDto) openings!: OpeningDto[];
   @IsArray() @ArrayMaxSize(LIMITS.furniture) @IsObject({ each: true }) @ValidateNested({ each: true }) @Type(() => FurnitureDto) furniture!: FurnitureDto[];

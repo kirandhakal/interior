@@ -2,7 +2,7 @@ import {
   BufferGeometry, DoubleSide, EdgesGeometry, Group, LineBasicMaterial, LineSegments, Mesh, MeshStandardMaterial, PlaneGeometry, Vector3,
 } from 'three';
 import { ParametricGeometry } from 'three/addons/geometries/ParametricGeometry.js';
-import { DEFAULT_WALL_THICKNESS, WALLS, clamp, roomPlan, wallOffset, type Curtains, type Dimensions, type Opening, type Room, type Wall } from '@studio/model';
+import { DEFAULT_WALL_THICKNESS, clamp, roomPlan, wallOffset, type Curtains, type Dimensions, type Opening, type Room, type Wall } from '@studio/model';
 import type { SceneAssets } from './furniture';
 import { planFace, planPrism } from './plan-mesh';
 import { box, cylinder } from './primitives';
@@ -19,10 +19,11 @@ export function disposeGeometry(group: Group) {
 
 export function createFloor(dimensions: Dimensions, assets: SceneAssets) {
   const { inner, outer, bounds: { length, width } } = roomPlan(dimensions);
+  const slabOutline = dimensions.outline ? inner : outer;
   const group = new Group();
-  const slab = new Mesh(planPrism(outer, -0.23, 0.22), assets.base);
+  const slab = new Mesh(planPrism(slabOutline, -0.23, 0.22), assets.base);
   slab.castShadow = slab.receiveShadow = true;
-  const edge = new Mesh(planPrism(outer, -0.244, 0.039), assets.edge);
+  const edge = new Mesh(planPrism(slabOutline, -0.244, 0.039), assets.edge);
   edge.castShadow = edge.receiveShadow = true;
   const map = floorTexture(length, width);
   const material = new MeshStandardMaterial({ map, roughness: 0.83 });
@@ -34,12 +35,12 @@ export function createFloor(dimensions: Dimensions, assets: SceneAssets) {
 
 export function createCeiling(dimensions: Dimensions) {
   const { height } = dimensions;
-  const { inner, outer } = roomPlan(dimensions);
+  const { inner, outer, edges: walls } = roomPlan(dimensions);
   const group = new Group();
   const plaster = new MeshStandardMaterial({ color: '#eee9df', roughness: 0.96 });
   const edge = new MeshStandardMaterial({ color: '#ddd5c7', roughness: 0.92 });
   const thickness = 0.095;
-  const slab = new Mesh(planPrism(outer, height, thickness), plaster);
+  const slab = new Mesh(planPrism(dimensions.outline ? inner : outer, height, thickness), plaster);
   slab.receiveShadow = true;
   group.add(slab);
 
@@ -53,12 +54,11 @@ export function createCeiling(dimensions: Dimensions) {
 
   // Retain the wall-side section of the slab when the rest is cut away.
   const rim = new Map<Wall, Mesh>();
-  for (const [index, wall] of WALLS.entries()) {
-    const next = (index + 1) % WALLS.length;
-    const mesh = new Mesh(planPrism([inner[index], inner[next], outer[next], outer[index]], height, thickness), edge);
+  for (const wall of walls) {
+    const mesh = new Mesh(planPrism([wall.start, wall.end, wall.outerEnd, wall.outerStart], height, thickness), edge);
     mesh.receiveShadow = true;
     group.add(mesh);
-    rim.set(wall, mesh);
+    rim.set(wall.id, mesh);
   }
   return { group, slab, rim, boundary, dispose: () => { disposeGeometry(group); plaster.dispose(); edge.dispose(); boundaryStroke.dispose(); } };
 }
@@ -169,7 +169,7 @@ export function sameOpeningGeometry(a: Opening, b: Opening) {
 
 export function createWall(room: Room, wall: Wall, openings: Opening[], a: SceneAssets) {
   const { height } = room.dimensions;
-  const { walls, outer } = roomPlan(room.dimensions);
+  const { walls } = roomPlan(room.dimensions);
   const plan = walls[wall];
   const { span, thickness, midpoint, tangent } = plan;
   const half = span / 2;
@@ -183,9 +183,15 @@ export function createWall(room: Room, wall: Wall, openings: Opening[], a: Scene
   material.roughness = roughness[paint.finish];
   const left = -half;
   const right = half;
-  const index = WALLS.indexOf(wall);
-  const outerLeft = wallOffset(plan, outer[index]);
-  const outerRight = wallOffset(plan, outer[(index + 1) % WALLS.length]);
+  const outerLeft = wallOffset(plan, plan.outerStart);
+  const outerRight = wallOffset(plan, plan.outerEnd);
+  if (plan.corner) {
+    const corner = plan.corner.map(point => ({ x: wallOffset(plan, point),
+      z: (midpoint.x - point.x) * plan.normal.x + (midpoint.z - point.z) * plan.normal.z }));
+    const mesh = new Mesh(planPrism(corner, 0, height), material);
+    mesh.castShadow = mesh.receiveShadow = true;
+    group.add(mesh);
+  }
   const section = (start: number, end: number) => [
     { x: start, z: 0 }, { x: end, z: 0 },
     { x: end === right ? outerRight : clamp(end, outerLeft, outerRight), z: -thickness },

@@ -167,6 +167,8 @@ input:not([type="range"], [type="color"]), select {
 .dimension-summary { display: block; font-size: .9rem; font-weight: 670; letter-spacing: -.026em; margin: .25rem 0 0; text-align: left; }
 .dimension-summary:hover { text-decoration: underline; text-underline-offset: .17rem; }
 .dimensions-card > span { font-size: .73rem; color: var(--muted); }
+.room-create-actions { display: grid; gap: .35rem; }
+.room-create-actions .button { white-space: nowrap; }
 
 .workspace { display: flex; flex-direction: column; min-width: 0; padding: 1.55rem 1.65rem .9rem; }
 .workspace-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: .7rem; margin-bottom: 1.23rem; }
@@ -179,6 +181,7 @@ input:not([type="range"], [type="color"]), select {
 }
 .workspace-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; margin-bottom: .1rem; }
 .workspace-actions .segmented { flex-wrap: wrap; }
+.floor-plan-button { min-height: 2.15rem; white-space: nowrap; }
 .undo-tools { display: flex; align-items: center; gap: .14rem; }
 .segmented {
   display: flex;
@@ -413,6 +416,46 @@ input:not([type="range"], [type="color"]), select {
 .modal-header h2 { font: 400 1.9rem/1.1 var(--display); letter-spacing: -.05em; margin: 0; }
 .modal-form, .compare-content { display: grid; gap: 1rem; padding: 1.12rem 1.3rem 1.28rem; }
 .modal-actions { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: .45rem; }
+.modal:has(.floor-plan-form) { width: min(72rem, calc(100vw - 2rem)); }
+.floor-plan-editor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(12rem, 15rem); gap: 1.15rem; align-items: start; }
+.floor-plan-workspace, .plan-inspector, .plan-entity { display: grid; gap: .65rem; min-width: 0; }
+.plan-toolbar, .plan-canvas-footer { display: flex; justify-content: space-between; gap: .45rem .85rem; align-items: center; flex-wrap: wrap; }
+.plan-toolbar-group { display: flex; align-items: center; gap: .28rem; }
+.plan-toolbar-group .icon-button { border: 1px solid var(--line); background: var(--white); }
+.plan-toolbar-group .icon-button[aria-pressed="true"] { color: var(--olive); background: var(--olive-soft); border-color: var(--olive-muted); }
+.plan-snapping { gap: .85rem; font-size: .79rem; }
+.plan-snapping label { display: flex; align-items: center; gap: .36rem; white-space: nowrap; }
+.plan-snapping input { accent-color: var(--olive); }
+.plan-canvas { display: block; width: 100%; height: auto; border: 1px solid var(--line-strong); border-radius: .45rem;
+  background: #f6f5ef; touch-action: none; user-select: none; cursor: crosshair; }
+.plan-canvas[data-mode="edit"] { cursor: default; }
+.plan-canvas[data-mode="pan"] { cursor: grab; }
+.plan-grid-minor, .plan-grid-major, .plan-origin { fill: none; stroke-width: 1; pointer-events: none; }
+.plan-grid-minor { stroke: #e5e6db; }
+.plan-grid-major { stroke: #d4d7c9; }
+.plan-origin { stroke: #8c9482; stroke-width: 1.4; }
+.plan-floor { fill: #e3ebd7b8; }
+.plan-wall, .plan-vertex { cursor: pointer; }
+.plan-canvas[data-mode="pan"] :is(.plan-wall, .plan-vertex) { cursor: grab; }
+.plan-wall-stroke { stroke: var(--olive); stroke-width: 3; stroke-linecap: round; }
+.plan-wall-hit, .plan-vertex-hit { stroke: transparent; fill: transparent; }
+.plan-wall-hit { stroke-width: 22; }
+.plan-wall[data-selected="true"] .plan-wall-stroke, .plan-wall:focus-visible .plan-wall-stroke { stroke: #26745d; stroke-width: 5; }
+.plan-vertex-mark { fill: var(--white); stroke: var(--olive); stroke-width: 2; }
+.plan-vertex[data-selected="true"] .plan-vertex-mark, .plan-vertex:focus-visible .plan-vertex-mark { fill: #26745d; stroke: var(--white); }
+.plan-vertex[data-close="true"] .plan-vertex-mark { fill: #e1edd8; stroke: #26745d; stroke-width: 3; }
+.plan-guide, .plan-proposed, .plan-hover { pointer-events: none; }
+.plan-guide line { stroke: #748974; stroke-width: 1; }
+.plan-guide text { fill: #344633; stroke: #f6f5ef; stroke-width: 4; paint-order: stroke fill; font: 650 15px var(--sans); }
+.plan-proposed > line { stroke: #26745d; stroke-width: 2.5; stroke-dasharray: 7 5; }
+.plan-hover { fill: #26745d; }
+.plan-proposed[data-invalid="true"] > line { stroke: var(--warning); }
+.plan-hover[data-invalid="true"] { fill: var(--warning); }
+.plan-canvas-footer, .plan-instructions { color: var(--muted); font-size: .77rem; }
+.plan-canvas-footer { gap: .3rem .7rem; }
+.plan-instructions { margin: 0; }
+.plan-entity { border-top: 1px solid var(--line); padding-top: .65rem; }
+.plan-reset { justify-self: start; }
 .modal:has(.dimension-form) { width: min(53rem, calc(100vw - 2rem)); }
 .dimension-content { display: grid; grid-template-columns: 1.15fr 1fr; align-items: start; gap: 1.4rem; }
 .dimension-editor, .dimension-walls { min-width: 0; display: grid; gap: .66rem; }
@@ -508,6 +551,9 @@ input:not([type="range"], [type="color"]), select {
   .room-sidebar { position: sticky; top: 0; z-index: 2; display: grid; grid-template-columns: minmax(5rem, .74fr) minmax(8rem, 1.4fr); padding: .6rem .75rem; gap: .64rem .7rem; }
   .project-title > div strong { font-size: 1.06rem; }
   .room-navigation { display: flex; gap: .3rem; align-items: center; }
+  .room-create-actions { grid-template-columns: 1fr 1fr; gap: .25rem; }
+  .room-create-actions .button { padding-inline: .35rem; font-size: .75rem; }
+  .room-create-actions .button svg { width: 13px; }
   .side-section-title { display: none; }
   .room-navigation ul { display: flex; flex: 1; overflow: auto; margin: 0; gap: .3rem; padding: .15rem; }
   .room-navigation li { flex: 0 0 auto; max-width: 10rem; }
@@ -550,6 +596,10 @@ input:not([type="range"], [type="color"]), select {
   .compare-actions, .comparison-footer { flex-wrap: wrap; }
   .comparison-heading .field { display: grid; }
   .compare-content, .modal-form { padding-inline: .9rem; }
+  .floor-plan-editor { grid-template-columns: 1fr; }
+  .plan-inspector { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .plan-entity { grid-column: 1 / -1; }
+  .plan-guide text { font-size: 22px; }
   .dimension-content { grid-template-columns: 1fr; gap: .9rem; }
   .dimension-plan svg { max-height: 8rem; }
   .comparison-grid h3 { align-self: center; }

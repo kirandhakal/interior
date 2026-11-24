@@ -4,8 +4,8 @@ import {
   Armchair, DoorOpen, Lightbulb, Plus, RectangleVertical,
 } from 'lucide-react';
 import {
-  CURTAIN_LENGTHS, HINGE_SIDES, LIMITS, OPENINGS, OPENING_EDGE_CLEARANCE, WALL_LABELS, WALLS, fitOpening,
-  openingFits, wallSpan, type FurnitureKind, type LightKind, type Opening, type Room, type Wall,
+  CURTAIN_LENGTHS, HINGE_SIDES, LIMITS, OPENINGS, OPENING_EDGE_CLEARANCE, fitOpening,
+  openingFits, roomWallIds, wallLabel, wallSpan, type FurnitureKind, type LightKind, type Opening, type Room, type Wall,
 } from '@studio/model';
 import { NumberField, RangeField, SelectField } from '@/components/ui';
 import { addOpening } from './rooms';
@@ -50,6 +50,8 @@ export function ObjectPanel(props: ObjectPanelProps) {
 function OpeningControls({ room, wall, selection, onSelect, onChange, notify }: ObjectPanelProps) {
   const active = selection?.type === 'opening' ? room.openings.find(item => item.id === selection.id) : undefined;
   const curtains = active?.curtains;
+  const wallIds = roomWallIds(room.dimensions);
+  const label = (wall: Wall) => wallLabel(room.dimensions, wall);
   const update = (item: Opening, changes: Partial<Opening>, field?: string) => {
     const next = fitOpening(room.dimensions, { ...item, ...changes });
     if (!openingFits(room, next)) {
@@ -68,9 +70,9 @@ function OpeningControls({ room, wall, selection, onSelect, onChange, notify }: 
           onSelect({ type: 'opening', id: opening.id });
         }}><Plus size={16} /> {kind}</button>)}
     </div>
-    <SelectField label="Wall for new openings" values={WALLS} value={wall} display={side => WALL_LABELS[side]}
+    <SelectField label="Wall for new openings" values={wallIds} value={wall} display={label}
       onChange={side => onSelect({ type: 'wall', wall: side })} />
-    <ObjectList entries={room.openings} icon={RectangleVertical} selected={active?.id}
+    <ObjectList entries={room.openings} icon={RectangleVertical} selected={active?.id} describe={item => label(item.wall)}
       onSelect={item => onSelect({ type: 'opening', id: item.id })}
       onRemove={item => {
         onChange({ ...room, openings: room.openings.filter(opening => opening.id !== item.id) });
@@ -78,7 +80,7 @@ function OpeningControls({ room, wall, selection, onSelect, onChange, notify }: 
       }} />
     {active && <section className="object-details" key={active.id}>
       <h3>{active.kind} placement</h3>
-      <SelectField label="Wall" values={WALLS} value={active.wall} display={side => WALL_LABELS[side]} onChange={side => update(active, { wall: side })} />
+      <SelectField label="Wall" values={wallIds} value={active.wall} display={label} onChange={side => update(active, { wall: side })} />
       <div className="two-fields">
         <NumberField label="Width" value={active.width} min={0.4} max={wallSpan(room.dimensions, active.wall) - 2 * OPENING_EDGE_CLEARANCE} onChange={width => update(active, { width })} />
         <NumberField label="Height" value={active.height} min={0.4} max={room.dimensions.height - OPENING_EDGE_CLEARANCE} onChange={height => update(active, { height })} />

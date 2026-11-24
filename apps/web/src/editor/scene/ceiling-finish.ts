@@ -2,8 +2,9 @@ import {
   CanvasTexture, Group, InstancedMesh, Matrix4, Mesh, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace,
 } from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { clipPlan, planArea, roomContains, roomPlan, type CeilingFinish, type Dimensions } from '@studio/model';
-import { planFace, planPrism } from './plan-mesh';
+import { clipPlan, planArea, planBounds, roomContains, roomPlan, type CeilingFinish, type Dimensions } from '@studio/model';
+import { polygonContainsFootprint } from '@studio/polygon';
+import { planFace, planPrism, triangulatePlan } from './plan-mesh';
 
 export function createCeilingFinish(dimensions: Dimensions, finish: CeilingFinish) {
   const { height } = dimensions;
@@ -19,6 +20,10 @@ export function createCeilingFinish(dimensions: Dimensions, finish: CeilingFinis
     const panels = new InstancedMesh(geometry, material, columns * rows);
     const matrix = new Matrix4();
     const clippedPanels: ReturnType<typeof planPrism>[] = [];
+    const triangles = dimensions.outline ? triangulatePlan(inner).map(points => ({ bounds: planBounds(points), edges: points.map((start, index) => {
+      const end = points[(index + 1) % points.length];
+      return { start, normal: { x: end.z - start.z, z: start.x - end.x } };
+    }) })) : undefined;
     const halfX = (tileWidth - 0.017) / 2;
     const halfZ = (tileDepth - 0.017) / 2;
     let count = 0;
@@ -28,17 +33,21 @@ export function createCeilingFinish(dimensions: Dimensions, finish: CeilingFinis
         const z = minZ + (row + 0.5) * tileDepth;
         const tile = [{ x: x - halfX, z: z - halfZ }, { x: x + halfX, z: z - halfZ },
           { x: x + halfX, z: z + halfZ }, { x: x - halfX, z: z + halfZ }];
-        if (tile.every(point => roomContains(dimensions, point))) {
+        if (dimensions.outline ? polygonContainsFootprint(inner, tile) : tile.every(point => roomContains(dimensions, point))) {
           matrix.makeTranslation(x, height - 0.045, z);
           panels.setMatrixAt(count++, matrix);
         } else {
-          const clipped = edges.reduce((points, wall) => clipPlan(points, wall), tile);
-          if (planArea(clipped) < 1e-6) continue;
-          const boundaryTile = planPrism(clipped, height - 0.0925, 0.095);
-          const mesh = new Mesh(boundaryTile, material);
-          mesh.receiveShadow = true;
-          group.add(mesh);
-          clippedPanels.push(boundaryTile);
+          const clips = triangles ? triangles.filter(({ bounds }) => x + halfX > bounds.minX && x - halfX < bounds.maxX &&
+            z + halfZ > bounds.minZ && z - halfZ < bounds.maxZ).map(triangle => triangle.edges) : [edges];
+          for (const boundary of clips) {
+            const clipped = boundary.reduce((points, wall) => clipPlan(points, wall), tile);
+            if (planArea(clipped) < 1e-6) continue;
+            const boundaryTile = planPrism(clipped, height - 0.0925, 0.095);
+            const mesh = new Mesh(boundaryTile, material);
+            mesh.receiveShadow = true;
+            group.add(mesh);
+            clippedPanels.push(boundaryTile);
+          }
         }
       }
     }

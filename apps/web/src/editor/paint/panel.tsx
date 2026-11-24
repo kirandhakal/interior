@@ -2,7 +2,7 @@
 
 import { useState, type CSSProperties, type FormEvent } from 'react';
 import { Check, ChevronRight, Droplet, Layers2, Palette, Search } from 'lucide-react';
-import { FINISHES, WALLS, WALL_LABELS, type Paint, type Room, type Wall } from '@studio/model';
+import { FINISHES, roomWallIds, wallLabel, type Paint, type Room, type Wall } from '@studio/model';
 import { Segmented, SelectField } from '@/components/ui';
 import { colorFor, findColors, PALETTE, relatedColors, resolveColor, type ColorChip } from './colors';
 
@@ -24,6 +24,7 @@ export function PaintPanel({ room, wall, onWall, onChange, onCompare }: {
   room: Room; wall: Wall; onWall: (wall: Wall) => void; onChange: (room: Room) => void; onCompare: () => void;
 }) {
   const paint = room.walls[wall];
+  const wallIds = roomWallIds(room.dimensions);
   const chip = colorFor(paint.color);
   const [all, setAll] = useState(false);
   const [query, setQuery] = useState('');
@@ -33,7 +34,7 @@ export function PaintPanel({ room, wall, onWall, onChange, onCompare }: {
 
   function apply(value: Partial<Paint>) {
     const walls = { ...room.walls };
-    for (const side of all ? WALLS : [wall]) walls[side] = { ...walls[side], ...value };
+    for (const side of all ? wallIds : [wall]) walls[side] = { ...walls[side], ...value };
     onChange({ ...room, walls });
   }
 
@@ -55,7 +56,7 @@ export function PaintPanel({ room, wall, onWall, onChange, onCompare }: {
       <span className="panel-icon"><Palette size={19} /></span>
       <div><h2>Wall paint</h2><p>Find a color for your room.</p></div>
     </div>
-    <SelectField label="Selected surface" value={wall} values={WALLS} display={side => WALL_LABELS[side]}
+    <SelectField label="Selected surface" value={wall} values={wallIds} display={side => wallLabel(room.dimensions, side)}
       onChange={side => { setShadeBase(undefined); onWall(side); }} />
     <section className="paint-section">
       <label className="field-label" htmlFor="search-color">Paint color</label>
@@ -96,7 +97,7 @@ export function PaintPanel({ room, wall, onWall, onChange, onCompare }: {
         <span>Paint all walls</span>
         <button type="button" role="switch" aria-checked={all} aria-label="Paint all walls" onClick={() => {
           setAll(!all);
-          if (!all) onChange({ ...room, walls: { north: paint, east: paint, south: paint, west: paint } });
+          if (!all) onChange({ ...room, walls: Object.fromEntries(wallIds.map(id => [id, paint])) });
         }}><span /></button>
       </div>
     </section>

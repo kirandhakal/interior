@@ -5,8 +5,8 @@ import {
 } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import {
-  FIXTURE_MOUNTS, WALLS, getDisplay, hasDisplay, fitCeilingDecor, fitFurniture, fitLight, fitOpening, isWallMount, openingFits, roomContains, roomPlan,
-  wallSpan, wallThickness,
+  FIXTURE_MOUNTS, getDisplay, hasDisplay, fitCeilingDecor, fitFurniture, fitLight, fitOpening, furniturePlacementFits,
+  isWallMount, openingFits, roomContains, roomPlan, roomWallIds, wallSpan, wallThickness,
   type CeilingDecor, type LightKind, type Room, type Wall,
 } from '@studio/model';
 import { createCeiling, createFloor, createWall, roughness, sameOpeningGeometry } from './architecture';
@@ -190,8 +190,9 @@ export class RoomScene {
     const view = this.state.view;
     if (view === 'Interior') {
       const corner = inner[2];
-      this.interiorCamera.position.set(center.x + (corner.x - center.x) * 0.76, Math.min(height * 0.5, 1.55),
-        center.z + (corner.z - center.z) * 0.76);
+      const start = { x: center.x + (corner.x - center.x) * 0.76, z: center.z + (corner.z - center.z) * 0.76 };
+      const position = roomContains(dimensions, start) ? start : center;
+      this.interiorCamera.position.set(position.x, Math.min(height * 0.5, 1.55), position.z);
       this.interiorCamera.lookAt(center.x + (inner[0].x - center.x) * 0.24, height * 0.53, center.z + (inner[0].z - center.z) * 0.44);
       this.interiorCamera.zoom = 1;
       this.cameraUntil = 0;
@@ -272,8 +273,9 @@ export class RoomScene {
     const switchedRoom = room.id !== oldRoom?.id;
     const dimensions = room.dimensions;
     const oldDimensions = oldRoom?.dimensions;
-    const footprintChanged = !oldDimensions || WALLS.some(wall => wallSpan(dimensions, wall) !== wallSpan(oldDimensions, wall));
-    const floorChanged = !oldDimensions || footprintChanged || WALLS.some(wall => wallThickness(dimensions, wall) !== wallThickness(oldDimensions, wall));
+    const wallIds = roomWallIds(dimensions);
+    const footprintChanged = !oldDimensions || dimensions.outline !== oldDimensions.outline || wallIds.some(wall => wallSpan(dimensions, wall) !== wallSpan(oldDimensions, wall));
+    const floorChanged = !oldDimensions || footprintChanged || wallIds.some(wall => wallThickness(dimensions, wall) !== wallThickness(oldDimensions, wall));
     const resized = floorChanged || dimensions.height !== oldDimensions?.height;
     const sameLayout = oldRoom && !resized;
     const ceilingView = isCeilingView(state.view);
@@ -342,7 +344,13 @@ export class RoomScene {
       }
     }
     if (room.walls !== oldRoom?.walls || room.openings !== oldRoom?.openings || !sameLayout || previous?.selection !== state.selection) {
-      for (const wall of WALLS) {
+      for (const [id, wall] of this.walls) {
+        if (wallIds.includes(id)) continue;
+        this.roomGroup.remove(wall.group);
+        wall.dispose();
+        this.walls.delete(id);
+      }
+      for (const wall of wallIds) {
         const openings = room.openings.filter(item => item.wall === wall);
         const existing = this.walls.get(wall);
         if (!existing || !sameLayout || existing.openings.length !== openings.length ||
@@ -669,7 +677,11 @@ export class RoomScene {
     this.point.add(this.dragOffset);
     const { x, y, z } = this.point;
     if (hit.type === 'furniture') {
-      const items = room.furniture.map(item => item.id === hit.id ? fitFurniture(room.dimensions, { ...item, x, z }) : item);
+      const items = room.furniture.map(item => {
+        if (item.id !== hit.id) return item;
+        const fitted = fitFurniture(room.dimensions, { ...item, x, z });
+        return furniturePlacementFits(room.dimensions, fitted) ? fitted : item;
+      });
       this.state.onMove({ ...room, furniture: items }, down.start);
     } else if (hit.type === 'ceilingDecor') {
       const items = (room.ceilingDecor ?? emptyDecor).map(item => item.id === hit.id ? fitCeilingDecor(room.dimensions, { ...item, x, z }) : item);

@@ -2,7 +2,7 @@
 
 import { Lamp, LampCeiling, LampFloor, LampWallDown, Lightbulb, LightbulbOff, Spotlight } from 'lucide-react';
 import {
-  FIXTURE_MOUNTS, LIGHTS, LIGHT_MOUNT_LABELS, LIMITS, MAX_LIGHT_LUMENS, clamp, fitLight, isPointFixture, isWallMount, pointAlongWall, roomPlan, wallOffset,
+  LIGHTS, LIMITS, MAX_LIGHT_LUMENS, clamp, fitLight, fixtureMounts, lightMountLabel, isPointFixture, isWallMount, pointAlongWall, roomPlan, wallOffset,
   lightLumens, type Light, type Room,
 } from '@studio/model';
 import { NumberField, RangeField, SelectField } from '@/components/ui';
@@ -43,7 +43,7 @@ export function LightingPanel({ room, selection, onSelect, onChange, onAddFixtur
     </section>
 
     <ObjectList entries={room.lights} icon={Lightbulb} selected={active?.id}
-      describe={light => `${LIGHT_MOUNT_LABELS[light.mount ?? 'Free']} · ${light.enabled === false ? 'Off' : lightLumens(light) + ' lm'}`}
+      describe={light => `${lightMountLabel(room.dimensions, light.mount ?? 'Free')} · ${light.enabled === false ? 'Off' : lightLumens(light) + ' lm'}`}
       onSelect={light => onSelect({ type: 'light', id: light.id })} onRemove={light => {
         onChange({ ...room, lights: room.lights.filter(item => item.id !== light.id) });
         if (active?.id === light.id) onSelect(null);
@@ -76,8 +76,8 @@ export function FixtureSettings({ light, room, onChange }: {
       </button>
     </div>
 
-    <SelectField label="Mount" value={mount} values={FIXTURE_MOUNTS[light.kind]}
-      display={value => LIGHT_MOUNT_LABELS[value]} onChange={next => {
+    <SelectField label="Mount" value={mount} values={fixtureMounts(light.kind, room.dimensions)}
+      display={value => lightMountLabel(room.dimensions, value)} onChange={next => {
         const wallMount = isWallMount(next);
         update({ mount: next,
           y: mount === 'Floor' ? height * 0.7 : light.y,

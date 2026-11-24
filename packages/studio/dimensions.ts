@@ -1,5 +1,12 @@
+import { MAX_PLAN_COORDINATE, nearestOnSegment, planArea, pointDistance, polygonContains, polygonError, signedPlanArea, turn } from './polygon';
+export { planArea } from './polygon';
+
 export const WALLS = ['north', 'east', 'south', 'west'] as const;
-export type Wall = typeof WALLS[number];
+export type LegacyWall = typeof WALLS[number];
+export type Wall = LegacyWall | `wall-${string}`;
+export const WALL_ID_PATTERN = /^(north|east|south|west|wall-[a-zA-Z0-9_-]{1,59})$/;
+export const isWallId = (value: unknown): value is Wall => typeof value === 'string' && WALL_ID_PATTERN.test(value);
+export type OutlineVertex = PlanPoint & { wallId: Wall; thickness?: number };
 export type Dimensions = {
   // The north and east spans are also the room-level length and width, in meters.
   length: number;
@@ -7,32 +14,40 @@ export type Dimensions = {
   height: number;
   southLength?: number;
   westLength?: number;
-  wallThickness?: Partial<Record<Wall, number>>;
+  wallThickness?: Partial<Record<LegacyWall, number>>;
+  outline?: OutlineVertex[];
 };
 
 export const DIMENSION_BOUNDS = { length: [1.2, 18], width: [1.2, 18], height: [2, 6] } as const;
 export const WALL_THICKNESS_BOUNDS = [0.05, 0.6] as const;
 export const DEFAULT_WALL_THICKNESS = 0.16;
 export const MIN_CORNER_ANGLE = 15;
-export const MAX_ROOM_COORDINATE = DIMENSION_BOUNDS.length[1];
+export const MAX_ROOM_COORDINATE = MAX_PLAN_COORDINATE;
 export const OPENING_EDGE_CLEARANCE = 0.08;
 export const OPENING_GAP = 0.04;
 export const PLACEMENT_TOLERANCE = 0.002;
 
 export type PlanPoint = { x: number; z: number };
 
-export function wallSpan(dimensions: Dimensions, wall: Wall) {
+export function wallSpan(dimensions: Dimensions, wall: Wall): number {
+  if (dimensions.outline) return roomPlan(dimensions).walls[wall]?.span ?? 0;
   switch (wall) {
     case 'north': return dimensions.length;
     case 'east': return dimensions.width;
     case 'south': return dimensions.southLength ?? dimensions.length;
     case 'west': return dimensions.westLength ?? dimensions.width;
   }
+  return 0;
 }
 
-export const wallThickness = (dimensions: Dimensions, wall: Wall) => dimensions.wallThickness?.[wall] ?? DEFAULT_WALL_THICKNESS;
+export function roomWallIds(dimensions: Dimensions): readonly Wall[] {
+  return dimensions.outline?.map(vertex => vertex.wallId) ?? WALLS;
+}
 
-export function setWallSpan(dimensions: Dimensions, wall: Wall, span: number): Dimensions {
+export const wallThickness = (dimensions: Dimensions, wall: Wall): number =>
+  (dimensions.outline ? roomPlan(dimensions).walls[wall]?.thickness : dimensions.wallThickness?.[wall as LegacyWall]) ?? DEFAULT_WALL_THICKNESS;
+
+export function setWallSpan(dimensions: Dimensions, wall: LegacyWall, span: number): Dimensions {
   switch (wall) {
     case 'north': return { ...dimensions, length: span, southLength: wallSpan(dimensions, 'south') };
     case 'east': return { ...dimensions, width: span, westLength: wallSpan(dimensions, 'west') };
@@ -83,6 +98,18 @@ function corners(dimensions: Dimensions): PlanPoint[] {
 }
 
 export function dimensionError(dimensions: Dimensions) {
+  if (dimensions.outline) {
+    if (!inBounds(dimensions.height, DIMENSION_BOUNDS.height)) return 'Enter a room height within the allowed range.';
+    const error = polygonError(dimensions.outline);
+    if (error) return error;
+    if (signedPlanArea(dimensions.outline) <= 0) return 'Store the room outline in clockwise order.';
+    const ids = dimensions.outline.map(vertex => vertex.wallId);
+    if (new Set(ids).size !== ids.length || ids.some(id => !isWallId(id))) return 'Walls must have unique, valid IDs.';
+    if (dimensions.outline.some(vertex => vertex.thickness !== undefined && !inBounds(vertex.thickness, WALL_THICKNESS_BOUNDS))) {
+      return 'Enter wall thicknesses within the allowed range.';
+    }
+    return;
+  }
   if (!inBounds(dimensions.height, DIMENSION_BOUNDS.height) || WALLS.some(wall =>
     !inBounds(wallSpan(dimensions, wall), DIMENSION_BOUNDS.length) || !inBounds(wallThickness(dimensions, wall), WALL_THICKNESS_BOUNDS))) {
     return 'Enter dimensions within the allowed ranges.';
@@ -120,10 +147,10 @@ export function planBounds(points: readonly PlanPoint[]) {
     center: { x: (minX + maxX) / 2, z: (minZ + maxZ) / 2 } };
 }
 
-function planWall(start: PlanPoint, end: PlanPoint, thickness: number) {
+function planWall(id: Wall, start: PlanPoint, end: PlanPoint, thickness: number) {
   const span = Math.hypot(end.x - start.x, end.z - start.z);
   const tangent = { x: (end.x - start.x) / span, z: (end.z - start.z) / span };
-  return { start, end, span, thickness, tangent, normal: { x: tangent.z, z: -tangent.x }, midpoint: interpolate(start, end, 0.5) };
+  return { id, start, end, span, thickness, tangent, normal: { x: tangent.z, z: -tangent.x }, midpoint: interpolate(start, end, 0.5) };
 }
 
 export type PlanWall = ReturnType<typeof planWall>;
@@ -136,18 +163,41 @@ export function pointAlongWall(wall: PlanWall, offset: number, outward = 0): Pla
 export const wallOffset = (wall: PlanWall, point: PlanPoint) => dot(subtract(point, wall.midpoint), wall.tangent);
 
 function buildPlan(dimensions: Dimensions) {
-  const inner = corners(dimensions);
-  const edges = WALLS.map((wall, index) => planWall(inner[index], inner[(index + 1) % 4], wallThickness(dimensions, wall)));
-  const outer = edges.map((current, index) => {
-    const previous = edges[(index + 3) % 4];
+  const outline = dimensions.outline;
+  const inner = outline ?? corners(dimensions);
+  const base = roomWallIds(dimensions).map((wall, index) => planWall(wall, inner[index], inner[(index + 1) % inner.length],
+    (outline ? outline[index].thickness : dimensions.wallThickness?.[wall as LegacyWall]) ?? DEFAULT_WALL_THICKNESS));
+  const joins = base.map((current, index) => {
+    const previous = base[(index + base.length - 1) % base.length];
     const first = pointAlongWall(previous, previous.span / 2, previous.thickness);
     const second = pointAlongWall(current, -current.span / 2, current.thickness);
-    const along = cross(subtract(second, first), current.tangent) / cross(previous.tangent, current.tangent);
-    return { x: first.x + previous.tangent.x * along, z: first.z + previous.tangent.z * along };
+    const determinant = cross(previous.tangent, current.tangent);
+    const along = cross(subtract(second, first), current.tangent) / determinant;
+    const meet = { x: first.x + previous.tangent.x * along, z: first.z + previous.tangent.z * along };
+    if (Math.abs(determinant) < 1e-7 || (outline && pointDistance(current.start, meet) > 4 * Math.max(previous.thickness, current.thickness))) {
+      return { before: first, after: second };
+    }
+    return { before: meet, after: meet };
   });
-  const [north, east, south, west] = edges;
-  const center = inner.reduce((point, vertex) => ({ x: point.x + vertex.x / 4, z: point.z + vertex.z / 4 }), { x: 0, z: 0 });
-  return { inner, outer, edges, walls: { north, east, south, west }, bounds: planBounds(inner), outerBounds: planBounds(outer), center };
+  const outer = joins.map(join => join.after);
+  const edges = base.map((wall, index) => {
+    const join = joins[index];
+    let outerStart = join.after;
+    let outerEnd = joins[(index + 1) % base.length].before;
+    if (outline && wallOffset(wall, outerEnd) <= wallOffset(wall, outerStart)) {
+      outerStart = pointAlongWall(wall, -wall.span / 2, wall.thickness);
+      outerEnd = pointAlongWall(wall, wall.span / 2, wall.thickness);
+    }
+    const corner = outline && turn(inner[(index + inner.length - 1) % inner.length], wall.start, wall.end) > 0 &&
+      pointDistance(join.before, outerStart) > 1e-7 ? [wall.start, join.before, outerStart] : undefined;
+    return { ...wall, outerStart, outerEnd, corner };
+  });
+  const bounds = planBounds(inner);
+  const average = inner.reduce((point, vertex) => ({ x: point.x + vertex.x / inner.length, z: point.z + vertex.z / inner.length }), { x: 0, z: 0 });
+  const center = outline && !polygonContains(inner, average, false)
+    ? findPlanPosition(inner, average, point => polygonContains(inner, point, false)) ?? average : average;
+  const walls = Object.fromEntries(edges.map(wall => [wall.id, wall])) as Record<Wall, typeof edges[number]>;
+  return { inner, outer, edges, walls, bounds, outerBounds: planBounds(edges.flatMap(wall => [wall.outerStart, wall.outerEnd])), center };
 }
 
 const cachedPlans = new WeakMap<Dimensions, ReturnType<typeof buildPlan>>();
@@ -164,16 +214,13 @@ export function roomPlan(dimensions: Dimensions) {
 export function roomMeasurements(dimensions: Dimensions, openings: readonly { width: number; height: number }[] = []) {
   const { inner } = roomPlan(dimensions);
   const floorArea = planArea(inner);
-  const perimeter = WALLS.reduce((sum, wall) => sum + wallSpan(dimensions, wall), 0);
+  const perimeter = roomWallIds(dimensions).reduce((sum, wall) => sum + wallSpan(dimensions, wall), 0);
   const wallArea = perimeter * dimensions.height;
   const openingArea = openings.reduce((sum, opening) => sum + opening.width * opening.height, 0);
   return { floorArea, perimeter, wallArea, netWallArea: wallArea - openingArea };
 }
 
-export const planArea = (points: readonly PlanPoint[]) =>
-  Math.abs(points.reduce((sum, point, index) => sum + cross(point, points[(index + 1) % points.length]), 0)) / 2;
-
-export function clipPlan(points: readonly PlanPoint[], wall: PlanWall, clearance = 0) {
+export function clipPlan(points: readonly PlanPoint[], wall: Pick<PlanWall, 'start' | 'normal'>, clearance = 0) {
   const clipped: PlanPoint[] = [];
   for (const [index, start] of points.entries()) {
     const end = points[(index + 1) % points.length];
@@ -186,11 +233,38 @@ export function clipPlan(points: readonly PlanPoint[], wall: PlanWall, clearance
 }
 
 export function roomContains(dimensions: Dimensions, point: PlanPoint) {
+  if (dimensions.outline) return polygonContains(dimensions.outline, point);
   return roomPlan(dimensions).edges.every(wall => dot(subtract(point, wall.start), wall.normal) <= 1e-10);
+}
+
+export function findPlanPosition(points: readonly PlanPoint[], preferred: PlanPoint, fits: (point: PlanPoint) => boolean) {
+  if (fits(preferred)) return preferred;
+  const bounds = planBounds(points);
+  let nearest: PlanPoint | undefined;
+  let distance = Infinity;
+  function consider(point: PlanPoint) {
+    const diff = pointDistance(preferred, point);
+    if (diff < distance && fits(point)) { nearest = point; distance = diff; }
+  }
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    const c = points[(i + 2) % points.length];
+    consider({ x: (a.x + b.x + c.x) / 3, z: (a.z + b.z + c.z) / 3 });
+    const t = nearestOnSegment(preferred, a, b);
+    const span = pointDistance(a, b);
+    consider({ x: t.x - (b.z - a.z) / span * 1e-4, z: t.z + (b.x - a.x) / span * 1e-4 });
+  }
+  for (let x = 0; x <= 24; x++) {
+    for (let z = 0; z <= 24; z++) consider({ x: bounds.minX + x * bounds.length / 24, z: bounds.minZ + z * bounds.width / 24 });
+  }
+  return nearest;
 }
 
 export function placementPoint(dimensions: Dimensions, point: PlanPoint, clearance: (wall: PlanWall) => number) {
   const { inner, edges } = roomPlan(dimensions);
+  if (dimensions.outline) return findPlanPosition(inner, point, candidate => polygonContains(inner, candidate) &&
+    edges.every(wall => pointDistance(candidate, nearestOnSegment(candidate, wall.start, wall.end)) >= clearance(wall) - 1e-10));
   if (edges.every(wall => dot(subtract(point, wall.start), wall.normal) + clearance(wall) <= 1e-10)) return point;
   const positions = edges.reduce((polygon, wall) => clipPlan(polygon, wall, clearance(wall)), inner);
   let nearest: PlanPoint | undefined;

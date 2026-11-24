@@ -1,11 +1,11 @@
 import {
-  WALLS, fitFurniture, fitOpening, furnitureFitsRoom, openingFits,
+  WALL_DEFAULT, fitFurniture, fitOpening, furnitureFitsRoom, openingFits, roomWallIds,
   type Dimensions, type Furniture, type FurnitureKind,
   type Opening, type OpeningKind, type Project, type Room, type Wall, type WallPaint,
 } from '@studio/model';
 import type { InteriorPlacement } from './interior-placement';
 
-export const WALL_DEFAULT = '#EAE4D8';
+export { WALL_DEFAULT } from '@studio/model';
 export const PRESETS = [
   { name: 'Living room', dimensions: { length: 5.8, width: 4.4, height: 2.85 } },
   { name: 'Bedroom', dimensions: { length: 4.2, width: 3.5, height: 2.65 } },
@@ -16,7 +16,7 @@ export const PRESETS = [
 export function newRoom(id: string, name: string, dimensions: Dimensions): Room {
   return {
     id, name, dimensions,
-    walls: Object.fromEntries(WALLS.map(wall => [wall, { color: WALL_DEFAULT, finish: 'Matte' }])) as WallPaint,
+    walls: Object.fromEntries(roomWallIds(dimensions).map(wall => [wall, { color: WALL_DEFAULT, finish: 'Matte' }])) as WallPaint,
     daylight: 'Afternoon', openings: [], furniture: [], lights: [], options: [],
   };
 }

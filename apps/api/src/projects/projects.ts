@@ -4,7 +4,8 @@ import {
 } from '@nestjs/common';
 import { InjectRepository, TypeOrmModule } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { FIXTURE_MOUNTS, dimensionError, fitCeilingDecor, fitLight, furniturePlacementFits, hasCabinetDoors, hasDisplay, openingFits, type Project, type SavedProject } from '../../../../packages/studio/model';
+import { dimensionError, fitCeilingDecor, fitLight, fixtureMounts, furniturePlacementFits, hasCabinetDoors, hasDisplay, openingFits,
+  roomWallIds, type Project, type SavedProject } from '../../../../packages/studio/model';
 import { AuthModule, SessionGuard, type AuthRequest } from '../auth/auth';
 import { ProjectEntity } from '../database/entities';
 import { CreateProjectDto, UpdateProjectDto } from './project.dto';
@@ -18,6 +19,12 @@ function checkLayout(project: Project) {
   for (const room of project.rooms) {
     const invalidDimensions = dimensionError(room.dimensions);
     if (invalidDimensions) throw new BadRequestException(`${room.name}. ${invalidDimensions}`);
+    const ids = roomWallIds(room.dimensions);
+    for (const { walls } of [room, ...room.options]) {
+      if (Object.keys(walls).length !== ids.length || ids.some(id => !Object.hasOwn(walls, id))) {
+        throw new BadRequestException(`Paint entries must match the walls in ${room.name}.`);
+      }
+    }
     for (const kind of ['openings', 'furniture', 'lights', 'options'] as const) assertUnique(room[kind], `${room.name} ${kind}`);
     const decor = room.ceilingDecor ?? [];
     assertUnique(decor, `${room.name} ceiling decor`);
@@ -45,7 +52,7 @@ function checkLayout(project: Project) {
       }
     }
     for (const light of room.lights) {
-      if (!FIXTURE_MOUNTS[light.kind].includes(light.mount ?? 'Free')) {
+      if (!fixtureMounts(light.kind, room.dimensions).includes(light.mount ?? 'Free')) {
         throw new BadRequestException(`${light.kind} has an invalid mount in ${room.name}.`);
       }
       const fitted = fitLight(room.dimensions, light);
