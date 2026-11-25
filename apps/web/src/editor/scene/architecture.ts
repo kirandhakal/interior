@@ -8,6 +8,8 @@ import { planFace, planPrism } from './plan-mesh';
 import { box, cylinder } from './primitives';
 import { createSwing, type Swing } from './swing';
 import { floorTexture } from './textures';
+import { createWallDesignObjects } from './wall-design';
+import { getWallDesign } from '@studio/wall-design';
 
 export const roughness = { Matte: 0.98, Eggshell: 0.65, Satin: 0.33 };
 
@@ -178,6 +180,10 @@ export function createWall(room: Room, wall: Wall, openings: Opening[], a: Scene
   group.rotation.y = -Math.atan2(tangent.z, tangent.x);
   group.userData.hit = { type: 'wall', wall };
   const material = new MeshStandardMaterial();
+  const surfaceMaterials = (['Interior', 'Exterior'] as const).map(surface => {
+    const paint = getWallDesign(room, wall, surface).paint;
+    return paint ? new MeshStandardMaterial({ color: paint.color, roughness: roughness[paint.finish] }) : undefined;
+  });
   const paint = room.walls[wall];
   material.color.set(paint.color);
   material.roughness = roughness[paint.finish];
@@ -201,6 +207,18 @@ export function createWall(room: Room, wall: Wall, openings: Opening[], a: Scene
     const mesh = new Mesh(planPrism(section(start, end), bottom, top - bottom), material);
     mesh.castShadow = mesh.receiveShadow = true;
     group.add(mesh);
+    surfaceMaterials.forEach((paint, index) => {
+      if (!paint) return;
+      const exterior = index === 1;
+      const a = exterior ? (start === left ? outerLeft : clamp(start, outerLeft, outerRight)) : start;
+      const b = exterior ? (end === right ? outerRight : clamp(end, outerLeft, outerRight)) : end;
+      if (b - a < 1e-8) return;
+      const face = new Mesh(new PlaneGeometry(b - a, top - bottom), paint);
+      face.position.set((a + b) / 2, (bottom + top) / 2, exterior ? -thickness - 0.001 : 0.001);
+      face.rotation.y = exterior ? Math.PI : 0;
+      face.receiveShadow = true;
+      group.add(face);
+    });
   };
   const cuts = [left, ...openings.flatMap(o => [o.offset - o.width / 2, o.offset + o.width / 2]), right].sort((a, b) => a - b);
   for (let i = 0; i < cuts.length - 1; i++) {
@@ -228,10 +246,14 @@ export function createWall(room: Room, wall: Wall, openings: Opening[], a: Scene
   outline.visible = false;
   group.add(outline);
   const normal = new Vector3(plan.normal.x, 0, plan.normal.z);
+  const designObjects = createWallDesignObjects(room, wall);
+  group.add(designObjects.group);
   return { group, outline, material, openings, openingModels, normal, dispose() {
     disposeGeometry(group);
     for (const model of openingModels.values()) model.dispose();
     material.dispose();
+    surfaceMaterials.forEach(paint => paint?.dispose());
+    designObjects.dispose();
     stroke.dispose();
   } };
 }

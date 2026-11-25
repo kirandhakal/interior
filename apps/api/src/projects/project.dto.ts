@@ -11,6 +11,8 @@ import {
   type Curtains, type Daylight, type FurnitureKind, type LightKind, type LightMount, type Opening, type OpeningKind, type Project, type Wall, type WallPaint,
 } from '../../../../packages/studio/model';
 import { MAX_PLAN_VERTICES } from '../../../../packages/studio/polygon';
+import { MAX_WALL_ITEMS, WALL_ITEM_KINDS, type WallItem, type WallDesign } from '../../../../packages/studio/wall-design';
+import { WALL_SURFACES } from '../../../../packages/studio/wall-surface';
 
 const idPattern = /^[a-zA-Z0-9_-]{1,64}$/;
 const trimmed = () => Transform(({ value }) => typeof value === 'string' ? value.trim() : value);
@@ -126,12 +128,39 @@ class CeilingDecorDto {
   @Matches(HEX_COLOR) color!: string;
 }
 
+class SurfacePaintDto {
+  @Matches(HEX_COLOR) color!: string;
+  @IsIn(FINISHES) finish!: WallItem['finish'];
+}
+
+class WallItemDto implements WallItem {
+  @Matches(idPattern) id!: string;
+  @trimmed() @IsString() @Length(1, 80) name!: string;
+  @IsIn(WALL_ITEM_KINDS) kind!: WallItem['kind'];
+  @number() @Min(0) @Max(200) u!: number;
+  @number() @Min(0) @Max(6) v!: number;
+  @number() @Min(0.02) @Max(200) width!: number;
+  @number() @Min(0.02) @Max(200) height!: number;
+  @number() @Min(0) @Max(360) rotation!: number;
+  @number() @Min(0) @Max(0.6) depth!: number;
+  @Matches(HEX_COLOR) color!: string;
+  @IsIn(FINISHES) finish!: WallItem['finish'];
+}
+
+class WallDesignDto implements WallDesign {
+  @Matches(WALL_ID_PATTERN) wall!: Wall;
+  @IsIn(WALL_SURFACES) surface!: WallDesign['surface'];
+  @optional() @IsObject() @ValidateNested() @Type(() => SurfacePaintDto) paint?: SurfacePaintDto;
+  @IsArray() @ArrayMaxSize(MAX_WALL_ITEMS) @IsObject({ each: true }) @ValidateNested({ each: true }) @Type(() => WallItemDto) items!: WallItemDto[];
+}
+
 class RoomDto {
   @Matches(idPattern) id!: string;
   @trimmed() @IsString() @Length(1, LIMITS.name) name!: string;
   @IsDefined() @IsObject() @ValidateNested() @Type(() => DimensionsDto) dimensions!: DimensionsDto;
   @IsDefined() @IsObject() @Validate(WallPaintConstraint) walls!: WallPaint;
   @IsIn(DAYLIGHTS) daylight!: Daylight;
+  @optional() @IsArray() @ArrayMaxSize(MAX_PLAN_VERTICES * 2) @IsObject({ each: true }) @ValidateNested({ each: true }) @Type(() => WallDesignDto) wallDesigns?: WallDesignDto[];
   @IsArray() @ArrayMaxSize(LIMITS.openings) @IsObject({ each: true }) @ValidateNested({ each: true }) @Type(() => OpeningDto) openings!: OpeningDto[];
   @IsArray() @ArrayMaxSize(LIMITS.furniture) @IsObject({ each: true }) @ValidateNested({ each: true }) @Type(() => FurnitureDto) furniture!: FurnitureDto[];
   @IsArray() @ArrayMaxSize(LIMITS.lights) @IsObject({ each: true }) @ValidateNested({ each: true }) @Type(() => LightDto) lights!: LightDto[];

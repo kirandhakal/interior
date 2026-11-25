@@ -53,7 +53,8 @@ export function isolateWall(room: Room, id: Wall, surface: WallSurface) {
   const frame = wallSurfaceFrame(room.dimensions, id, surface);
   const openings = room.openings.filter(opening => opening.wall === id);
   const apertures = openings.map(opening => openingOnSurface(frame, opening));
-  return { room, id, surface, frame, paint: room.walls[id], openings, apertures,
+  const paint = room.wallDesigns?.find(design => design.wall === id && design.surface === surface)?.paint ?? room.walls[id];
+  return { room, id, surface, frame, paint, openings, apertures,
     grossArea: frame.width * frame.height,
     netArea: frame.width * frame.height - apertures.reduce((area, opening) => area + opening.width * opening.height, 0) };
 }

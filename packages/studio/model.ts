@@ -1,4 +1,5 @@
 import { INTERIOR_CATALOG, type FurnitureKind } from './interior';
+import type { WallDesign } from './wall-design';
 import { CEILING_CATALOG, type CeilingDecor, type CeilingFinish } from './ceiling';
 import {
   WALLS, OPENING_EDGE_CLEARANCE, OPENING_GAP, PLACEMENT_TOLERANCE, findPlanPosition, isWallId, placementPoint, pointAlongWall,
@@ -54,6 +55,7 @@ export type Room = {
   options: PaintOption[];
   ceilingFinish?: CeilingFinish;
   ceilingDecor?: CeilingDecor[];
+  wallDesigns?: WallDesign[];
 };
 export type Project = { name: string; rooms: Room[] };
 export type SavedProject = Project & { id: string; version: number; updatedAt: string };

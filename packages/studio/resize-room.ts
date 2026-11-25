@@ -3,6 +3,7 @@ import {
   furnitureFitsRoom, isWallMount, openingFits, openingsShareHeight, pointAlongWall, roomPlan, roomWallIds, wallOffset, wallSpan, wallThickness,
   type Dimensions, type Opening, type Room,
 } from './model';
+import { wallDesignsError } from './wall-design';
 
 export function resizeRoom(room: Room, name: string, dimensions: Dimensions, preserveWallOffsets = true): Room | undefined {
   if (dimensionError(dimensions)) return;
@@ -11,7 +12,8 @@ export function resizeRoom(room: Room, name: string, dimensions: Dimensions, pre
   if (sameInterior) {
     const sameThickness = roomWallIds(dimensions).every(wall => wallThickness(dimensions, wall) === wallThickness(room.dimensions, wall));
     if (sameThickness) return name === room.name ? room : { ...room, name };
-    return { ...room, name, dimensions };
+    const next = { ...room, name, dimensions };
+    return wallDesignsError(next) ? undefined : next;
   }
 
   const updated = { ...room, name, dimensions };
@@ -29,8 +31,9 @@ export function resizeRoom(room: Room, name: string, dimensions: Dimensions, pre
     const next = roomPlan(dimensions).walls[mount];
     return fitLight(dimensions, { ...light, ...pointAlongWall(next, wallOffset(previous, light)) });
   });
-  return { ...updated, furniture, lights,
+  const next = { ...updated, furniture, lights,
     ceilingDecor: room.ceilingDecor?.map(item => fitCeilingDecor(dimensions, item)) };
+  return wallDesignsError(next) ? undefined : next;
 }
 
 function refitOpenings(room: Room) {

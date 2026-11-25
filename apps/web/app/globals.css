@@ -640,6 +640,22 @@ input:not([type="range"], [type="color"]), select {
 .wall-properties dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
 .wall-paint-chip { display: inline-block; width: .7rem; height: .7rem; margin-right: .4rem; border: 1px solid #0003; }
 .wall-inspector h4 { margin: 0 0 .65rem; font-size: .87rem; }
+.wall-history-tools { display: flex; align-items: center; gap: .3rem; }
+.wall-edit-toolbar { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-bottom: .65rem; }
+.wall-edit-toolbar > span { font-size: .76rem; color: var(--muted); }
+.wall-design-section { display: grid; gap: .6rem; padding-block: .8rem; border-top: 1px solid var(--line); }
+details.wall-design-section { display: block; }
+.wall-design-section summary { cursor: pointer; font-size: .85rem; font-weight: 600; }
+.wall-design-section[open] > * + * { margin-top: .75rem; }
+.wall-design-section .wall-property-note { margin: 0; }
+.wall-color-field { display: flex; align-items: center; gap: .5rem; font-size: .8rem; }
+.wall-color-field input { width: 2.6rem; height: 2rem; padding: .1rem; margin-left: auto; }
+.wall-color-field code { font-size: .72rem; }
+.wall-item-catalog, .wall-item-fields, .wall-item-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
+.wall-item-catalog .button, .wall-item-actions .button { padding: .5rem .3rem; font-size: .75rem; white-space: normal; }
+.wall-design-error { color: #993c2c; background: #f8e8df; padding: .7rem; font-size: .85rem; border-radius: .3rem; }
+.wall-elevation { user-select: none; }
+.wall-inspector { max-height: 76dvh; }
 .wall-opening-list { display: grid; gap: .4rem; margin-bottom: .9rem; }
 .wall-opening-list button { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .4rem; padding: .65rem; border: 1px solid var(--line); border-radius: .3rem; text-align: left; font-size: .8rem; }
 .wall-opening-list button[aria-pressed=true] { background: #e4e9dc; border-color: #657452; }

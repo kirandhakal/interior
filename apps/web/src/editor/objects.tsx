@@ -47,7 +47,8 @@ export function ObjectPanel(props: ObjectPanelProps) {
   </div>;
 }
 
-function OpeningControls({ room, wall, selection, onSelect, onChange, notify }: ObjectPanelProps) {
+export function OpeningControls({ room, wall, selection, onSelect, onChange, notify, onlyWall = false }:
+  Pick<ObjectPanelProps, 'room' | 'wall' | 'selection' | 'onSelect' | 'onChange' | 'notify'> & { onlyWall?: boolean }) {
   const active = selection?.type === 'opening' ? room.openings.find(item => item.id === selection.id) : undefined;
   const curtains = active?.curtains;
   const wallIds = roomWallIds(room.dimensions);
@@ -72,7 +73,7 @@ function OpeningControls({ room, wall, selection, onSelect, onChange, notify }: 
     </div>
     <SelectField label="Wall for new openings" values={wallIds} value={wall} display={label}
       onChange={side => onSelect({ type: 'wall', wall: side })} />
-    <ObjectList entries={room.openings} icon={RectangleVertical} selected={active?.id} describe={item => label(item.wall)}
+    <ObjectList entries={onlyWall ? room.openings.filter(item => item.wall === wall) : room.openings} icon={RectangleVertical} selected={active?.id} describe={item => label(item.wall)}
       onSelect={item => onSelect({ type: 'opening', id: item.id })}
       onRemove={item => {
         onChange({ ...room, openings: room.openings.filter(opening => opening.id !== item.id) });

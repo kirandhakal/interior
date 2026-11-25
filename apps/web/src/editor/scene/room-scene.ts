@@ -343,7 +343,7 @@ export class RoomScene {
         current.update(item, room.dimensions);
       }
     }
-    if (room.walls !== oldRoom?.walls || room.openings !== oldRoom?.openings || !sameLayout || previous?.selection !== state.selection) {
+    if (room.wallDesigns !== oldRoom?.wallDesigns || room.walls !== oldRoom?.walls || room.openings !== oldRoom?.openings || !sameLayout || previous?.selection !== state.selection) {
       for (const [id, wall] of this.walls) {
         if (wallIds.includes(id)) continue;
         this.roomGroup.remove(wall.group);
@@ -353,7 +353,7 @@ export class RoomScene {
       for (const wall of wallIds) {
         const openings = room.openings.filter(item => item.wall === wall);
         const existing = this.walls.get(wall);
-        if (!existing || !sameLayout || existing.openings.length !== openings.length ||
+        if (!existing || !sameLayout || room.wallDesigns !== oldRoom?.wallDesigns || existing.openings.length !== openings.length ||
             existing.openings.some((item, index) => !sameOpeningGeometry(item, openings[index]))) {
           if (existing) {
             this.roomGroup.remove(existing.group);

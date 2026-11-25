@@ -21,8 +21,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       walls: Object.fromEntries(outline.map(p => [p.wallId, { color: '#ccbb99', finish: 'Matte' }])) };
     const project = { id: 'browser-test', name: 'Test home', version: 1, updatedAt: new Date().toISOString(), rooms: [room, custom] };
     await page.addInitScript(project => {
-      localStorage.setItem('room-paint-studio.projects.v1', JSON.stringify([project]));
-      localStorage.setItem('room-paint-studio.last.v1', 'browser/' + project.id);
+      if (!localStorage.getItem('room-paint-studio.projects.v1')) {
+        localStorage.setItem('room-paint-studio.projects.v1', JSON.stringify([project]));
+        localStorage.setItem('room-paint-studio.last.v1', 'browser/' + project.id);
+      }
     }, project);
     await page.goto(process.env.WALL_TEST_URL || 'http://localhost:3001');
     await page.getByRole('heading', { name: 'Test room', exact: true }).waitFor().catch(async error => {
@@ -70,6 +72,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await dialog.getByRole('button', { name: 'Zoom in on wall' }).click();
     await dialog.getByRole('button', { name: 'Fit wall to view' }).click();
     await dialog.getByRole('button', { name: '2D elevation', exact: true }).click();
+    await dialog.getByText('Wall measurements & properties', { exact: true }).click();
     for (const id of ['north', 'east', 'south', 'west']) {
       await dialog.getByRole('combobox', { name: 'Selected wall', exact: true }).selectOption(id);
       assert.match(await dialog.locator('.wall-properties').first().innerText(), new RegExp(id));
@@ -93,7 +96,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.waitForFunction(() => JSON.parse(localStorage.getItem('room-paint-studio.projects.v1'))[0].version === 2);
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('room-paint-studio.projects.v1'))[0]);
     assert.deepEqual(saved.rooms, project.rooms, 'Workspace navigation leaves all room data unchanged');
+    await require('./wall-design-checks.cjs')(page, project);
     assert.deepEqual(errors, []);
-    console.log('PASS: wall selection, both surfaces, openings, coordinates, zoom/pan, 3D, units, mobile, return and unchanged project data');
+    console.log('PASS: wall navigation, drawing, item manipulation, surfaces, copy validation, history, 3D, persistence, mobile and preserved geometry');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

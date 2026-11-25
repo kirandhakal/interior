@@ -5,19 +5,34 @@ import { Hand, Maximize, Minus, Plus } from 'lucide-react';
 import { formatMeasurement, type MeasurementUnit } from '@studio/measurement';
 import type { IsolatedWall, WallPoint } from '@studio/wall-surface';
 import { IconButton } from '@/components/ui';
+import { resizeWallItem, wallItemContains, wallItemError, type WallItem } from '@studio/wall-design';
+import { WallItemVisual } from './item-visual';
 
 const WIDTH = 1000;
 const HEIGHT = 650;
 const initialCamera = { zoom: 1, x: 0, y: 0 };
 
-export function WallElevation({ wall, unit, selectedOpening, onOpening, onPoint }: {
+export type WallEditorTool = 'Select' | 'Pan' | 'Draw paint';
+type DesignGesture = { start: WallPoint; point: WallPoint; item?: WallItem; resize: boolean };
+
+export function WallElevation({ wall, unit, selectedOpening, onOpening, onPoint, items = [], selectedItem, tool = 'Pan',
+  onSelectItem, onChangeItem, onDraw, onDeleteItem }: {
   wall: IsolatedWall; unit: MeasurementUnit; selectedOpening?: string;
   onOpening: (id: string) => void; onPoint: (point: WallPoint) => void;
+  items?: WallItem[]; selectedItem?: string; tool?: WallEditorTool;
+  onSelectItem?: (id?: string) => void; onChangeItem?: (item: WallItem) => void;
+  onDraw?: (rect: { u: number; v: number; width: number; height: number }) => void; onDeleteItem?: () => void;
 }) {
   const svg = useRef<SVGSVGElement>(null);
   const [camera, setCamera] = useState(initialCamera);
   const drag = useRef<{ pointer: number; x: number; y: number; moved: boolean } | null>(null);
   const gridId = useId();
+  const [gesture, setGesture] = useState<DesignGesture>();
+  const designDrag = useRef<DesignGesture | undefined>(undefined);
+  const localPoint = (x: number, y: number): WallPoint => ({
+    u: ((x - WIDTH / 2 - camera.x) / camera.zoom + WIDTH / 2 - left) / scale,
+    v: height - ((y - HEIGHT / 2 - camera.y) / camera.zoom + HEIGHT / 2 - top) / scale, depth: 0,
+  });
   const { width, height } = wall.frame;
   const scale = Math.min(790 / width, 440 / height);
   const left = (WIDTH - width * scale) / 2;
@@ -43,10 +58,29 @@ export function WallElevation({ wall, unit, selectedOpening, onOpening, onPoint 
     return () => element?.removeEventListener('wheel', wheel);
   }, []);
 
+  const movedItem = (value: DesignGesture) => value.item && (value.resize ? resizeWallItem(value.item, value.point)
+    : { ...value.item, u: value.item.u + value.point.u - value.start.u, v: value.item.v + value.point.v - value.start.v });
+  const drawRect = (value: DesignGesture) => ({ u: Math.min(value.start.u, value.point.u), v: Math.min(value.start.v, value.point.v),
+    width: Math.abs(value.point.u - value.start.u), height: Math.abs(value.point.v - value.start.v) });
+  const preview = gesture && movedItem(gesture);
+  const visibleItems = items.map(item => preview?.id === item.id ? preview : item);
+  const cancel = () => { drag.current = null; designDrag.current = undefined; setGesture(undefined); };
+
   return <div className="wall-viewport">
     <svg ref={svg} className="wall-elevation" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} tabIndex={0}
-      role="group" aria-label={`${wall.surface} wall elevation. Drag to pan; use plus and minus to zoom, arrows to pan, or 0 to fit.`}
+      role="group" aria-label={`${wall.surface} wall elevation. Select and drag items; use plus and minus to zoom or 0 to fit.`}
       onKeyDown={event => {
+        if (event.key === 'Escape' && drag.current) { event.preventDefault(); event.stopPropagation(); cancel(); return; }
+        const selected = items.find(item => item.id === selectedItem);
+        if (selected && tool === 'Select' && (event.key === 'Delete' || event.key === 'Backspace')) {
+          event.preventDefault(); onDeleteItem?.(); return;
+        }
+        if (selected && tool === 'Select' && event.key.startsWith('Arrow')) {
+          event.preventDefault();
+          const step = event.shiftKey ? 0.1 : 0.01;
+          onChangeItem?.({ ...selected, u: selected.u + (event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0),
+            v: selected.v + (event.key === 'ArrowDown' ? -step : event.key === 'ArrowUp' ? step : 0) }); return;
+        }
         if (event.target !== event.currentTarget) return;
         const delta: Record<string, [number, number]> = { ArrowLeft: [30, 0], ArrowRight: [-30, 0], ArrowUp: [0, 30], ArrowDown: [0, -30] };
         if (delta[event.key]) { event.preventDefault(); const [x, y] = delta[event.key]; setCamera(c => ({ ...c, x: c.x + x, y: c.y + y })); }
@@ -59,6 +93,15 @@ export function WallElevation({ wall, unit, selectedOpening, onOpening, onPoint 
         const point = screenPoint(event.clientX, event.clientY);
         if (!point) return;
         drag.current = { pointer: event.pointerId, x: point.x, y: point.y, moved: false };
+        const local = localPoint(point.x, point.y);
+        const resizeId = (event.target as Element).getAttribute('data-resize-item');
+        const overOpening = wall.apertures.some(o => local.u >= o.u && local.u <= o.u + o.width && local.v >= o.v && local.v <= o.v + o.height);
+        const item = tool === 'Select' ? (resizeId ? items.find(item => item.id === resizeId) : !overOpening ? [...items].reverse().find(item => wallItemContains(item, local)) : undefined) : undefined;
+        if (tool === 'Draw paint' || item) {
+          const next = { start: local, point: local, item, resize: !!resizeId };
+          designDrag.current = next; setGesture(next);
+          if (item) onSelectItem?.(item.id);
+        } else if (tool === 'Select') onSelectItem?.(undefined);
         event.currentTarget.setPointerCapture(event.pointerId);
       }}
       onPointerMove={event => {
@@ -66,6 +109,12 @@ export function WallElevation({ wall, unit, selectedOpening, onOpening, onPoint 
         if (!point) return;
         const down = drag.current;
         if (down && down.pointer === event.pointerId) {
+          if (designDrag.current) {
+            const next = { ...designDrag.current, point: localPoint(point.x, point.y) };
+            designDrag.current = next; setGesture(next);
+            if (Math.hypot(point.x - down.x, point.y - down.y) > 2) down.moved = true;
+            return;
+          }
           const x = point.x - down.x;
           const y = point.y - down.y;
           if (Math.hypot(x, y) > 2 || down.moved) {
@@ -78,6 +127,15 @@ export function WallElevation({ wall, unit, selectedOpening, onOpening, onPoint 
       onPointerUp={event => {
         const down = drag.current;
         if (down?.pointer !== event.pointerId) return;
+        if (designDrag.current) {
+          const value = designDrag.current;
+          if (down.moved) {
+            const item = movedItem(value);
+            if (item) onChangeItem?.(item);
+            else onDraw?.(drawRect(value));
+          }
+          cancel(); event.currentTarget.releasePointerCapture(event.pointerId); return;
+        }
         if (!down.moved) {
           const point = screenPoint(event.clientX, event.clientY);
           if (point) {
@@ -90,13 +148,32 @@ export function WallElevation({ wall, unit, selectedOpening, onOpening, onPoint 
         }
         drag.current = null;
         event.currentTarget.releasePointerCapture(event.pointerId);
-      }} onPointerCancel={() => { drag.current = null; }} onLostPointerCapture={() => { drag.current = null; }}>
+      }} onPointerCancel={cancel} onLostPointerCapture={cancel}>
       <defs><pattern id={gridId} width={scale / 2} height={scale / 2} patternUnits="userSpaceOnUse">
         <path d={`M ${scale / 2} 0 H 0 V ${scale / 2}`} fill="none" stroke="#53634a" strokeOpacity=".14" strokeWidth="1" />
       </pattern></defs>
       <g transform={`translate(${WIDTH / 2 + camera.x} ${HEIGHT / 2 + camera.y}) scale(${camera.zoom}) translate(${-WIDTH / 2} ${-HEIGHT / 2})`}>
         <rect x={left} y={top} width={width * scale} height={height * scale} fill={wall.paint.color} stroke="#53634a" strokeWidth="3" />
         <rect x={left} y={top} width={width * scale} height={height * scale} fill={`url(#${gridId})`} />
+        {visibleItems.map(item => <g key={item.id} role="button" tabIndex={0} aria-label={`Select ${item.name}`}
+          aria-pressed={item.id === selectedItem}
+          onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectItem?.(item.id); } }}
+          transform={`translate(${left + (item.u + item.width / 2) * scale} ${top + (height - item.v - item.height / 2) * scale}) rotate(${-item.rotation})`}>
+          <title>{item.name} · {formatMeasurement(item.width, unit)} × {formatMeasurement(item.height, unit)}</title>
+          <WallItemVisual item={item} scale={scale} apertures={wall.apertures} />
+          {item.id === selectedItem && <>
+            <rect x={-item.width * scale / 2} y={-item.height * scale / 2} width={item.width * scale} height={item.height * scale}
+              fill="none" stroke={wallItemError(wall.room, wall.id, wall.surface, item) ? '#b43d32' : '#305fbe'} strokeWidth={2 / camera.zoom} />
+            {tool === 'Select' && <rect data-resize-item={item.id} aria-label="Resize selected item"
+              x={item.width * scale / 2 - 6 / camera.zoom} y={-item.height * scale / 2 - 6 / camera.zoom}
+              width={12 / camera.zoom} height={12 / camera.zoom} fill="white" stroke="#305fbe" style={{ cursor: 'nesw-resize' }} />}
+          </>}
+        </g>)}
+        {gesture && !gesture.item && (() => {
+          const rect = drawRect(gesture);
+          return <rect x={left + rect.u * scale} y={top + (height - rect.v - rect.height) * scale}
+            width={rect.width * scale} height={rect.height * scale} fill="#a4ab9455" stroke="#53634a" strokeDasharray="5 3" />;
+        })()}
         {wall.apertures.map(({ opening, u, v, width: w, height: h }) => {
           const x = left + u * scale;
           const y = top + (height - v - h) * scale;

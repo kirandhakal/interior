@@ -8,6 +8,7 @@ import { dimensionError, fitCeilingDecor, fitLight, fixtureMounts, furniturePlac
   roomWallIds, type Project, type SavedProject } from '../../../../packages/studio/model';
 import { AuthModule, SessionGuard, type AuthRequest } from '../auth/auth';
 import { ProjectEntity } from '../database/entities';
+import { wallDesignsError } from '../../../../packages/studio/wall-design';
 import { CreateProjectDto, UpdateProjectDto } from './project.dto';
 
 function assertUnique(items: { id: string }[], label: string) {
@@ -19,6 +20,8 @@ function checkLayout(project: Project) {
   for (const room of project.rooms) {
     const invalidDimensions = dimensionError(room.dimensions);
     if (invalidDimensions) throw new BadRequestException(`${room.name}. ${invalidDimensions}`);
+    const invalidDesign = wallDesignsError(room);
+    if (invalidDesign) throw new BadRequestException(`${room.name}. ${invalidDesign}`);
     const ids = roomWallIds(room.dimensions);
     for (const { walls } of [room, ...room.options]) {
       if (Object.keys(walls).length !== ids.length || ids.some(id => !Object.hasOwn(walls, id))) {

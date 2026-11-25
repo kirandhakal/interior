@@ -4,6 +4,7 @@ import {
   type Opening, type OpeningKind, type Project, type Room, type Wall, type WallPaint,
 } from '@studio/model';
 import type { InteriorPlacement } from './interior-placement';
+import { wallDesignsError } from '@studio/wall-design';
 
 export { WALL_DEFAULT } from '@studio/model';
 export const PRESETS = [
@@ -48,7 +49,7 @@ export function addOpening(room: Room, kind: OpeningKind, wall: Wall): Opening |
     height: kind === 'Door' ? 2.05 : 1.1, sill: kind === 'Door' ? 0 : 0.85 };
   const offsets = [0, -0.55, 0.55, -1.1, 1.1, -1.65, 1.65, -2.2, 2.2, -3, 3, -4, 4, -6, 6, -8, 8];
   return offsets.map(offset => fitOpening(room.dimensions, { ...base, offset }))
-    .find(opening => openingFits(room, opening));
+    .find(opening => openingFits(room, opening) && !wallDesignsError({ ...room, openings: [...room.openings, opening] }));
 }
 
 export function addFurniture(room: Room, kind: FurnitureKind, placement?: InteriorPlacement): Furniture | undefined {

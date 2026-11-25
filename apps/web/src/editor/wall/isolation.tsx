@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { AmbientLight, DirectionalLight, MOUSE, OrthographicCamera, Raycaster, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
+import { AmbientLight, Box3, Box3Helper, DirectionalLight, MOUSE, OrthographicCamera, Raycaster, Scene, Vector2, Vector3, WebGLRenderer, type Object3D } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Hand, Maximize, Minus, Orbit, Plus } from 'lucide-react';
 import type { IsolatedWall } from '@studio/wall-surface';
@@ -11,11 +11,19 @@ import { createWall } from '../scene/architecture';
 import { createAssets } from '../scene/furniture';
 
 /** Only rendering resources are isolated. The source room and wall are never modified. */
-export function WallIsolation({ wall, onOpening }: { wall: IsolatedWall; onOpening: (id: string) => void }) {
+export function WallIsolation({ wall, onOpening, onItem, selectedItem }: {
+  wall: IsolatedWall; onOpening: (id: string) => void; onItem?: (id: string) => void; selectedItem?: string;
+}) {
   const host = useRef<HTMLDivElement>(null);
   const action = useRef<(command: 'in' | 'out' | 'fit' | 'orbit' | 'pan') => void>(() => {});
   const select = useRef(onOpening);
   select.current = onOpening;
+  const selectItem = useRef(onItem);
+  selectItem.current = onItem;
+  const updateModel = useRef<(room: IsolatedWall['room']) => void>(() => {});
+  const selected = useRef(selectedItem);
+  selected.current = selectedItem;
+  const highlight = useRef<() => void>(() => {});
   const [error, setError] = useState(false);
   const [pan, setPan] = useState(false);
   const { room, id, surface } = wall;
@@ -27,14 +35,23 @@ export function WallIsolation({ wall, onOpening }: { wall: IsolatedWall; onOpeni
     try { renderer = new WebGLRenderer({ antialias: true, alpha: true }); }
     catch { setError(true); return; }
     const scene = new Scene();
+    const selectionBox = new Box3();
+    const selection = new Box3Helper(selectionBox, 0x305fbe);
+    selection.visible = false;
+    scene.add(selection);
     const assets = createAssets();
-    const model = createWall(room, id, wall.openings, assets);
-    for (const opening of wall.openings) {
-      const item = model.openingModels.get(opening.id)!;
-      item.update(opening);
-      item.tickSwing(1);
-    }
-    model.outline.visible = true;
+    const buildModel = (room: IsolatedWall['room']) => {
+      const openings = room.openings.filter(opening => opening.wall === id);
+      const result = createWall(room, id, openings, assets);
+      for (const opening of openings) {
+        const item = result.openingModels.get(opening.id)!;
+        item.update(opening); item.tickSwing(1);
+      }
+      result.outline.visible = true;
+      return result;
+    };
+    let model = buildModel(room);
+    let modelRoom = room;
     scene.add(model.group, new AmbientLight('#ffffff', 2));
     const light = new DirectionalLight('#fff5e5', 3);
     light.position.set(8, 12, 10);
@@ -50,6 +67,20 @@ export function WallIsolation({ wall, onOpening }: { wall: IsolatedWall; onOpeni
     renderer.domElement.tabIndex = 0;
     element.append(renderer.domElement);
     const render = () => renderer.render(scene, camera);
+    highlight.current = () => {
+      let found: Object3D | undefined;
+      model.group.traverse(object => {
+        if (selected.current && object.userData.wallItem === selected.current && object.userData.wallSurface === surface) found = object;
+      });
+      selection.visible = !!found;
+      if (found) { model.group.updateMatrixWorld(true); selectionBox.setFromObject(found).expandByScalar(0.008); }
+      render();
+    };
+    updateModel.current = next => {
+      if (next === modelRoom) return;
+      scene.remove(model.group); model.dispose();
+      model = buildModel(next); modelRoom = next; scene.add(model.group); highlight.current();
+    };
     const centerPoint = wallLocalToWorld(wall.frame, { u: wall.frame.width / 2, v: wall.frame.height / 2, depth: 0 });
     const center = new Vector3(centerPoint.x, centerPoint.y, centerPoint.z);
     const fit = () => {
@@ -93,6 +124,10 @@ export function WallIsolation({ wall, onOpening }: { wall: IsolatedWall; onOpeni
       ray.setFromCamera(new Vector2((event.clientX - bounds.left) / bounds.width * 2 - 1, 1 - (event.clientY - bounds.top) / bounds.height * 2), camera);
       const hit = ray.intersectObject(model.group, true)[0];
       for (let object = hit?.object; object; object = object.parent!) {
+        if (object.userData.wallItem) {
+          if (object.userData.wallSurface === surface) selectItem.current?.(object.userData.wallItem);
+          break;
+        }
         if (object.userData.hit?.type === 'opening') { select.current(object.userData.hit.id); break; }
       }
     };
@@ -108,24 +143,28 @@ export function WallIsolation({ wall, onOpening }: { wall: IsolatedWall; onOpeni
     renderer.domElement.addEventListener('keydown', keyDown);
     renderer.domElement.addEventListener('webglcontextlost', lost);
     renderer.domElement.addEventListener('webglcontextrestored', restored);
-    fit(); resize();
+    fit(); resize(); highlight.current();
     return () => {
-      observer.disconnect(); controls.dispose(); action.current = () => {};
+      observer.disconnect(); controls.dispose(); action.current = () => {}; updateModel.current = () => {}; highlight.current = () => {};
       renderer.domElement.removeEventListener('pointerdown', pointerDown);
       renderer.domElement.removeEventListener('pointerup', pointerUp);
       renderer.domElement.removeEventListener('keydown', keyDown);
       renderer.domElement.removeEventListener('webglcontextlost', lost);
       renderer.domElement.removeEventListener('webglcontextrestored', restored);
       model.dispose();
+      selection.dispose();
       for (const asset of Object.values(assets)) {
         if (Array.isArray(asset)) asset.forEach(item => item.dispose());
         else asset.dispose();
       }
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove();
     };
-    // The workspace keys this component by room, wall and surface; its data is read-only.
+    // Rebuild the renderer only when the wall frame changes; design edits retain the camera.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room, id, surface]);
+  }, [room.id, room.dimensions, id, surface]);
+
+  useEffect(() => { updateModel.current(room); }, [room]);
+  useEffect(() => { highlight.current(); }, [selectedItem]);
 
   return <div className="wall-viewport">
     <div ref={host} className="wall-isolation" />

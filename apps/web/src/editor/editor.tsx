@@ -30,6 +30,7 @@ import { addFurniture, newRoom, PRESETS, starterProject } from './rooms';
 import { Preview, SceneToolbar, ViewSwitch } from './scene/preview';
 import { isCeilingView, type CameraAction, type Hit, type Tool, type View } from './scene/room-scene';
 import { WallWorkspace } from './wall/workspace';
+import { wallDesignsError } from '@studio/wall-design';
 
 type Tab = 'Paint' | 'Ceiling' | ObjectTab;
 type Dialog = 'add' | 'room' | 'draw' | 'plan' | 'compare' | 'auth' | 'projects' | 'wall';
@@ -156,7 +157,7 @@ export function Editor() {
         setPlacingCeiling(false);
         return;
       }
-      if ((!event.metaKey && !event.ctrlKey) || event.altKey || dialog ||
+      if ((!event.metaKey && !event.ctrlKey) || event.altKey || (dialog && dialog !== 'wall') ||
         (event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable=true]'))) return;
       const key = event.key.toLowerCase();
       if (key !== 'z' && key !== 'y') return;
@@ -180,6 +181,8 @@ export function Editor() {
     dispatch({ type: 'edit', update, key });
   };
   const changeRoom = (next: Room, group?: string | Room) => {
+    const invalidDesign = wallDesignsError(next);
+    if (invalidDesign) { notify(invalidDesign, true); return; }
     edit(value => ({ ...value, rooms: value.rooms.map(item => item.id === next.id ? next : item) }), group);
   };
 
@@ -528,7 +531,10 @@ export function Editor() {
         else if (next !== room) changeRoom(next);
       }} onRemove={dialog === 'plan' && project.rooms.length > 1 ? removeRoom : undefined} />}
     {dialog === 'compare' && <CompareDialog room={room} onChange={changeRoom} onClose={close} />}
-    {dialog === 'wall' && <WallWorkspace project={project} roomId={room.id} wallId={wall} unit={unit} onUnit={changeUnit} onClose={close} />}
+    {dialog === 'wall' && <WallWorkspace project={project} roomId={room.id} wallId={wall} unit={unit} onUnit={changeUnit} onClose={close}
+      onChange={changeRoom} canUndo={!!history.past.length} canRedo={!!history.future.length}
+      onUndo={() => dispatch({ type: 'undo' })} onRedo={() => dispatch({ type: 'redo' })}
+      saving={saving} onSave={() => save()} />}
     {dialog === 'projects' && <ProjectDialog account={account} current={project.name} currentSaved={!!activeSave}
       dirty={dirty} onClose={close} onName={name => edit(value => ({ ...value, name }))} onOpen={(saved, storage) => {
         touched.current = true;
