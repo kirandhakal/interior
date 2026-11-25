@@ -484,7 +484,7 @@ export class RoomScene {
     for (const item of this.ceilingDecor.values()) item.group.visible = !isTop;
     this.localPoint.copy(this.camera.position).sub(this.controls.target).setY(0).normalize();
     for (const [wall, mesh] of this.walls) {
-      const shown = isTop || straightUp || inside || mesh.normal.dot(this.localPoint) < 0.03;
+      const shown = isTop || straightUp || inside || (selected?.type === 'wall' && selected.wall === wall) || mesh.normal.dot(this.localPoint) < 0.03;
       const height = isTop ? 0.065 : 1;
       if (mesh.group.visible !== shown || mesh.group.scale.y !== height) this.shadowDirty = true;
       mesh.group.visible = shown;

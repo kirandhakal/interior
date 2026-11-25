@@ -29,9 +29,10 @@ import { RoomDialog } from './room-dialog';
 import { addFurniture, newRoom, PRESETS, starterProject } from './rooms';
 import { Preview, SceneToolbar, ViewSwitch } from './scene/preview';
 import { isCeilingView, type CameraAction, type Hit, type Tool, type View } from './scene/room-scene';
+import { WallWorkspace } from './wall/workspace';
 
 type Tab = 'Paint' | 'Ceiling' | ObjectTab;
-type Dialog = 'add' | 'room' | 'draw' | 'plan' | 'compare' | 'auth' | 'projects';
+type Dialog = 'add' | 'room' | 'draw' | 'plan' | 'compare' | 'auth' | 'projects' | 'wall';
 type Storage = 'account' | 'browser';
 type ActiveSave = { data: SavedProject; storage: Storage };
 const DEFAULT_WALL = 'north';
@@ -411,6 +412,10 @@ export function Editor() {
             <h1>{room.name}</h1>
           </div>
           <div className="workspace-actions">
+            <button type="button" className="button button-secondary" onClick={() => {
+              setPlacingCeiling(false);
+              setDialog('wall');
+            }}><Scan size={16} /> Open wall</button>
             <button type="button" className="button button-secondary floor-plan-button" onClick={() => {
               touched.current = true;
               setDialog('plan');
@@ -523,6 +528,7 @@ export function Editor() {
         else if (next !== room) changeRoom(next);
       }} onRemove={dialog === 'plan' && project.rooms.length > 1 ? removeRoom : undefined} />}
     {dialog === 'compare' && <CompareDialog room={room} onChange={changeRoom} onClose={close} />}
+    {dialog === 'wall' && <WallWorkspace project={project} roomId={room.id} wallId={wall} unit={unit} onUnit={changeUnit} onClose={close} />}
     {dialog === 'projects' && <ProjectDialog account={account} current={project.name} currentSaved={!!activeSave}
       dirty={dirty} onClose={close} onName={name => edit(value => ({ ...value, name }))} onOpen={(saved, storage) => {
         touched.current = true;
