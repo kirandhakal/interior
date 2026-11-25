@@ -11,7 +11,7 @@ import { floorTexture } from './textures';
 import { createWallDesignObjects } from './wall-design';
 import { getWallDesign } from '@studio/wall-design';
 
-export const roughness = { Matte: 0.98, Eggshell: 0.65, Satin: 0.33 };
+export const roughness = { Matte: 0.98, Eggshell: 0.65, Satin: 0.33, Gloss: 0.12 };
 
 export function disposeGeometry(group: Group) {
   group.traverse(object => {

@@ -72,11 +72,18 @@ export function WallWorkspace({ project, roomId, wallId, unit, onUnit, onClose, 
       <div className="wall-workspace-body">
         <section className="wall-canvas-column" aria-label="Wall preview">
           {view === '2D elevation' && <div className="wall-edit-toolbar">
-            <Segmented label="Wall editing tool" value={tool} values={['Select', 'Pan', 'Draw paint']} onChange={setTool} />
+            <Segmented label="Wall editing tool" value={tool} values={['Select', 'Pan', 'Draw paint', 'Draw polygon']} onChange={setTool} />
             <span>Draw a section, or select an item to move and resize.</span>
           </div>}
           {view === '2D elevation' ? <WallElevation key={`${room.id}/${id}/${surface}`} wall={wall} unit={unit}
             selectedOpening={openingId} onOpening={selectOpening} onPoint={setPoint} items={design.items} selectedItem={selectedItem} tool={tool}
+            onPolygon={points => {
+              const u=Math.min(...points.map(p=>p.u)), v=Math.min(...points.map(p=>p.v));
+              const width=Math.max(...points.map(p=>p.u))-u, height=Math.max(...points.map(p=>p.v))-v;
+              const item: WallItem={...WALL_ITEM_PRESETS['Paint section'],id:crypto.randomUUID(),name:'Polygon paint',kind:'Paint section',rotation:0,finish:'Matte',u,v,width,height,
+                polygon:points.map(p=>({u:(p.u-u)/width,v:(p.v-v)/height}))};
+              if(changeDesign({...design,items:[...design.items,item]})) selectItem(item.id);
+            }}
             onSelectItem={selectItem} onChangeItem={changeItem} onDeleteItem={deleteItem} onDraw={rect => {
               const item: WallItem = { ...WALL_ITEM_PRESETS['Paint section'], ...rect, id: crypto.randomUUID(), name: 'Paint section',
                 kind: 'Paint section', rotation: 0, finish: 'Matte' };

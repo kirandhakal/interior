@@ -4,6 +4,9 @@ import { isolateWall, WALL_SURFACES, type WallSurface } from './wall-surface';
 export const WALL_ITEM_KINDS = ['Paint section', 'Wall art', 'Mirror', 'Shelf', 'Wall panel'] as const;
 export type WallItemKind = typeof WALL_ITEM_KINDS[number];
 export type WallItem = {
+  texture?: 'Plain' | 'Linen' | 'Stipple';
+  material?: 'Paint' | 'Plaster' | 'Metallic';
+  polygon?: { u: number; v: number }[];
   id: string; name: string; kind: WallItemKind; u: number; v: number;
   width: number; height: number; rotation: number; depth: number; color: string; finish: Paint['finish'];
 };
@@ -47,6 +50,14 @@ export function wallItemContains(item: WallItem, point: { u: number; v: number }
   const angle = item.rotation * Math.PI / 180;
   const x = point.u - item.u - item.width / 2;
   const y = point.v - item.v - item.height / 2;
+  if (item.polygon) {
+    const u = (x * Math.cos(angle) + y * Math.sin(angle)) / item.width + 0.5;
+    const v = (-x * Math.sin(angle) + y * Math.cos(angle)) / item.height + 0.5;
+    let inside = false;
+    item.polygon.forEach((a, i) => { const b = item.polygon![(i + 1) % item.polygon!.length];
+      if ((a.v > v) !== (b.v > v) && u < (b.u - a.u) * (v - a.v) / (b.v - a.v) + a.u) inside = !inside; });
+    return inside;
+  }
   return Math.abs(x * Math.cos(angle) + y * Math.sin(angle)) <= item.width / 2 &&
     Math.abs(-x * Math.sin(angle) + y * Math.cos(angle)) <= item.height / 2;
 }
@@ -59,10 +70,10 @@ type SurfaceRect = SurfacePoint & { width: number; height: number };
 export function wallPaintPolygons(item: WallItem, openings: readonly SurfaceRect[]): SurfacePoint[][] {
   const angle = item.rotation * Math.PI / 180;
   const c = Math.cos(angle); const s = Math.sin(angle);
-  let polygons = [[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([x, y]) => ({
+  let polygons = triangulatePaint(item.polygon ?? [{u:0,v:0},{u:1,v:0},{u:1,v:1},{u:0,v:1}]).map(triangle => triangle.map(p => { const x = p.u * 2 - 1; const y = p.v * 2 - 1; return ({
     u: item.u + item.width / 2 + c * x * item.width / 2 - s * y * item.height / 2,
     v: item.v + item.height / 2 + s * x * item.width / 2 + c * y * item.height / 2,
-  }))];
+  }); }));
   const clip = (polygon: SurfacePoint[], axis: 'u' | 'v', value: number, sign: number) => {
     const result: SurfacePoint[] = [];
     for (let i = 0; i < polygon.length; i++) {
@@ -114,6 +125,8 @@ export function wallItemError(room: Room, wall: Wall, surface: WallSurface, item
     item.u < 0 || item.v < 0 || item.width < 0.02 || item.height < 0.02 || item.depth < 0 || item.depth > 0.6 || item.rotation < 0 || item.rotation > 360 ||
     !WALL_ITEM_KINDS.includes(item.kind) || !HEX_COLOR.test(item.color) || !FINISHES.includes(item.finish) ||
     !/^[a-zA-Z0-9_-]{1,64}$/.test(item.id) || !item.name.trim() || item.name.length > 80) return 'Enter a valid name, color and dimensions (at least 0.02 m).';
+  if (item.texture && !['Plain','Linen','Stipple'].includes(item.texture) || item.material && !['Paint','Plaster','Metallic'].includes(item.material)) return 'Invalid paint material or texture.';
+  if (item.polygon && (item.kind !== 'Paint section' || !validPaintPolygon(item.polygon))) return 'Paint polygon must be simple, nonzero and inside its region bounds.';
   const isolated = isolateWall(room, wall, surface);
   const bounds = wallItemBounds(item);
   if (bounds.u < -1e-8 || bounds.v < -1e-8 || bounds.u + bounds.width > isolated.frame.width + 1e-8 ||
@@ -170,4 +183,41 @@ export function copyWallDesign(source: Room, sourceWall: Wall, sourceSurface: Wa
     items: mode === 'Merge' ? [...existing.items, ...items] : items });
   const error = wallDesignsError(next);
   return error ? { error: `Cannot copy: ${error}` } : { room: next };
+}
+
+// Region vertices are normalized within the wall-local item rectangle. Array order is back-to-front.
+type PaintPoint = { u: number; v: number };
+const cross = (a: PaintPoint, b: PaintPoint, c: PaintPoint) => (b.u-a.u)*(c.v-a.v)-(b.v-a.v)*(c.u-a.u);
+export function validPaintPolygon(p: PaintPoint[]): boolean {
+  if (!Array.isArray(p) || p.length < 3 || p.length > 64 || p.some(a => !a || !Number.isFinite(a.u) || !Number.isFinite(a.v) || a.u < 0 || a.u > 1 || a.v < 0 || a.v > 1)) return false;
+  for (let i=0;i<p.length;i++) {
+    const a=p[i], b=p[(i+1)%p.length];
+    if (Math.hypot(a.u-b.u,a.v-b.v)<1e-8) return false;
+    for(let j=i+1;j<p.length;j++) {
+      if(j===i+1 || (i===0 && j===p.length-1)) continue;
+      const c=p[j],d=p[(j+1)%p.length];
+      if(cross(a,b,c)*cross(a,b,d)<=0 && cross(c,d,a)*cross(c,d,b)<=0 &&
+        Math.max(Math.min(a.u,b.u),Math.min(c.u,d.u))<=Math.min(Math.max(a.u,b.u),Math.max(c.u,d.u)) &&
+        Math.max(Math.min(a.v,b.v),Math.min(c.v,d.v))<=Math.min(Math.max(a.v,b.v),Math.max(c.v,d.v))) return false;
+    }
+  }
+  return Math.abs(p.reduce((s,a,i)=>s+a.u*p[(i+1)%p.length].v-p[(i+1)%p.length].u*a.v,0))>1e-8;
+}
+export function triangulatePaint(points: PaintPoint[]): PaintPoint[][] {
+  const p=[...points], result: PaintPoint[][]=[];
+  if(p.reduce((s,a,i)=>s+a.u*p[(i+1)%p.length].v-p[(i+1)%p.length].u*a.v,0)<0) p.reverse();
+  while(p.length>3) {
+    const i=p.findIndex((b,i)=>{ const a=p[(i+p.length-1)%p.length],c=p[(i+1)%p.length];
+      return cross(a,b,c)>1e-10 && !p.some(q=>q!==a && q!==b && q!==c && cross(a,b,q)>=0 && cross(b,c,q)>=0 && cross(c,a,q)>=0); });
+    if(i<0) return [];
+    result.push([p[(i+p.length-1)%p.length],p[i],p[(i+1)%p.length]]); p.splice(i,1);
+  }
+  return [...result,p];
+}
+export const PAINT_PRESETS = ['Horizontal', 'Vertical', 'Diagonal', 'Stripes', 'Checkerboard'] as const;
+export function paintPreset(width: number, height: number, preset: typeof PAINT_PRESETS[number], boundary: number, id: () => string): WallItem[] {
+  const rects = preset === 'Horizontal' ? [[0,0,1,boundary],[0,boundary,1,1-boundary]] : preset === 'Vertical' ? [[0,0,boundary,1],[boundary,0,1-boundary,1]] :
+    preset === 'Stripes' ? Array.from({length:6},(_,i)=>[i/6,0,1/6,1]) : preset === 'Checkerboard' ? Array.from({length:16},(_,i)=>[i%4/4,Math.floor(i/4)/4,0.25,0.25]) : [[0,0,1,1],[0,0,1,1]];
+  return rects.map(([u,v,w,h],i)=>({id:id(),name:`${preset} ${i+1}`,kind:'Paint section',u:u*width,v:v*height,width:w*width,height:h*height,rotation:0,depth:0,finish:'Matte',color:(preset==='Checkerboard' ? (i+Math.floor(i/4))%2 : i%2) ? '#A4AB94':'#EDE3D4',
+    ...(preset==='Diagonal' ? {polygon: i===0 ? [{u:0,v:0},{u:1,v:0},{u:1,v:boundary},{u:0,v:1-boundary}] : [{u:0,v:1-boundary},{u:1,v:boundary},{u:1,v:1},{u:0,v:1}]} : {}) }));
 }

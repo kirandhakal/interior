@@ -12,17 +12,19 @@ const WIDTH = 1000;
 const HEIGHT = 650;
 const initialCamera = { zoom: 1, x: 0, y: 0 };
 
-export type WallEditorTool = 'Select' | 'Pan' | 'Draw paint';
+export type WallEditorTool = 'Select' | 'Pan' | 'Draw paint' | 'Draw polygon';
 type DesignGesture = { start: WallPoint; point: WallPoint; item?: WallItem; resize: boolean };
 
 export function WallElevation({ wall, unit, selectedOpening, onOpening, onPoint, items = [], selectedItem, tool = 'Pan',
-  onSelectItem, onChangeItem, onDraw, onDeleteItem }: {
+  onSelectItem, onChangeItem, onDraw, onPolygon, onDeleteItem }: {
   wall: IsolatedWall; unit: MeasurementUnit; selectedOpening?: string;
   onOpening: (id: string) => void; onPoint: (point: WallPoint) => void;
   items?: WallItem[]; selectedItem?: string; tool?: WallEditorTool;
   onSelectItem?: (id?: string) => void; onChangeItem?: (item: WallItem) => void;
+  onPolygon?: (points: WallPoint[]) => void;
   onDraw?: (rect: { u: number; v: number; width: number; height: number }) => void; onDeleteItem?: () => void;
 }) {
+  const [polygon, setPolygon] = useState<WallPoint[]>([]);
   const svg = useRef<SVGSVGElement>(null);
   const [camera, setCamera] = useState(initialCamera);
   const drag = useRef<{ pointer: number; x: number; y: number; moved: boolean } | null>(null);
@@ -67,9 +69,12 @@ export function WallElevation({ wall, unit, selectedOpening, onOpening, onPoint,
   const cancel = () => { drag.current = null; designDrag.current = undefined; setGesture(undefined); };
 
   return <div className="wall-viewport">
+    {tool === 'Draw polygon' && <p>Click vertices inside the wall. Enter closes the polygon; Escape cancels. {polygon.length} vertices placed.</p>}
     <svg ref={svg} className="wall-elevation" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} tabIndex={0}
       role="group" aria-label={`${wall.surface} wall elevation. Select and drag items; use plus and minus to zoom or 0 to fit.`}
       onKeyDown={event => {
+        if (event.key === 'Escape' && polygon.length) { event.stopPropagation(); setPolygon([]); return; }
+        if (event.key === 'Enter' && polygon.length >= 3) { onPolygon?.(polygon); setPolygon([]); return; }
         if (event.key === 'Escape' && drag.current) { event.preventDefault(); event.stopPropagation(); cancel(); return; }
         const selected = items.find(item => item.id === selectedItem);
         if (selected && tool === 'Select' && (event.key === 'Delete' || event.key === 'Backspace')) {
@@ -92,6 +97,7 @@ export function WallElevation({ wall, unit, selectedOpening, onOpening, onPoint,
         if (event.button !== 0 || drag.current) return;
         const point = screenPoint(event.clientX, event.clientY);
         if (!point) return;
+        if (tool === 'Draw polygon') { const p=localPoint(point.x,point.y); if(p.u>=0 && p.u<=width && p.v>=0 && p.v<=height) setPolygon([...polygon,p]); return; }
         drag.current = { pointer: event.pointerId, x: point.x, y: point.y, moved: false };
         const local = localPoint(point.x, point.y);
         const resizeId = (event.target as Element).getAttribute('data-resize-item');
@@ -197,6 +203,7 @@ export function WallElevation({ wall, unit, selectedOpening, onOpening, onPoint,
         <circle cx={left} cy={top + height * scale} r="5" fill="#53634a" />
         <text x={left} y={top + height * scale + 30} className="wall-svg-label">0, 0 · U → · V ↑</text>
       </g>
+      {polygon.length > 0 && <polyline fill="none" stroke="#2563eb" strokeWidth="2" points={polygon.map(p=>`${WIDTH/2+camera.x+(left+p.u*scale-WIDTH/2)*camera.zoom},${HEIGHT/2+camera.y+(top+(height-p.v)*scale-HEIGHT/2)*camera.zoom}`).join(' ')} />}
     </svg>
     <div className="wall-viewport-tools" role="group" aria-label="Elevation camera">
       <Hand size={16} aria-hidden="true" /><span>{Math.round(camera.zoom * 100)}%</span>

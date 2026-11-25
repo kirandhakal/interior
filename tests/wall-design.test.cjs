@@ -146,3 +146,25 @@ test('API accepts and round-trips designs and rejects malformed or invalid wall 
     await assert.rejects(service.create('account', await validate(invalid)), { status: 400 });
   }
 });
+
+test('polygon regions validate simple boundaries, triangulate concavity and persist materials', async () => {
+  const {validPaintPolygon,paintPreset}=require('../packages/studio/wall-design.ts');
+  const polygon=[{u:0,v:0},{u:1,v:0},{u:1,v:0.4},{u:0.4,v:0.4},{u:0.4,v:1},{u:0,v:1}];
+  assert.equal(validPaintPolygon(polygon),true);
+  assert.equal(validPaintPolygon([{u:0,v:0},{u:1,v:1},{u:0,v:1},{u:1,v:0}]),false);
+  const region=item({kind:'Paint section',u:0,v:0,width:2,height:2,polygon,finish:'Gloss',texture:'Linen',material:'Metallic'});
+  const pieces=wallPaintPolygons(region,[]);
+  const area=pieces.reduce((sum,p)=>sum+Math.abs(p.reduce((s,a,i)=>s+a.u*p[(i+1)%p.length].v-p[(i+1)%p.length].u*a.v,0))/2,0);
+  near(area,2.56);
+  assert.equal(wallItemContains(region,{u:1.8,v:1.8}),false);
+  assert.equal(wallItemContains(region,{u:0.2,v:1.8}),true);
+  let n=0;
+  for(const preset of ['Horizontal','Vertical','Diagonal','Stripes','Checkerboard']) {
+    const items=paintPreset(6,3,preset,0.35,()=>`p${n++}`);
+    assert.equal(wallDesignsError(setWallDesign(room(),design(items))),undefined);
+  }
+  const pipe=new ValidationPipe({whitelist:true,forbidNonWhitelisted:true,transform:true});
+  const doc={id:'a7d2602b-44f1-4406-a2bf-c387df49221d',name:'Paint',rooms:[setWallDesign(room(),design([region]))]};
+  const result=await pipe.transform(JSON.parse(JSON.stringify(doc)),{type:'body',metatype:CreateProjectDto});
+  assert.deepEqual(JSON.parse(JSON.stringify(result.rooms[0].wallDesigns)),doc.rooms[0].wallDesigns);
+});

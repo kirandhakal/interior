@@ -2,14 +2,16 @@
 
 import { useState } from 'react';
 import { FINISHES, roomWallIds, wallLabel, type Project, type Room } from '@studio/model';
-import { copyWallDesign, MAX_WALL_ITEMS, WALL_ITEM_KINDS, type WallDesign, type WallItem, type WallItemKind } from '@studio/wall-design';
-import { WALL_SURFACES } from '@studio/wall-surface';
+import { paintPreset, PAINT_PRESETS, copyWallDesign, MAX_WALL_ITEMS, WALL_ITEM_KINDS, type WallDesign, type WallItem, type WallItemKind } from '@studio/wall-design';
+import { isolateWall, WALL_SURFACES } from '@studio/wall-surface';
 import { NumberField, SelectField } from '@/components/ui';
 
 export function WallDesignPanel({ room, design, selectedId, onSelect, onChange, onItem, onAdd, onDelete }: {
   room: Room; design: WallDesign; selectedId?: string; onSelect: (id?: string) => void;
   onChange: (design: WallDesign) => void; onItem: (item: WallItem) => void; onAdd: (kind: WallItemKind) => void; onDelete: () => void;
 }) {
+  const [preset, setPreset] = useState<typeof PAINT_PRESETS[number]>('Horizontal');
+  const [boundary, setBoundary] = useState(0.5);
   const selected = design.items.find(item => item.id === selectedId);
   const paint = design.paint ?? room.walls[design.wall];
   const index = design.items.findIndex(item => item.id === selectedId);
@@ -30,6 +32,14 @@ export function WallDesignPanel({ room, design, selectedId, onSelect, onChange, 
       <p className="wall-property-note">Changes apply to this {design.surface.toLowerCase()} face. Other faces keep their own designs.</p>
     </section>
     <section className="wall-design-section" aria-label="Add wall items">
+      <h4>Paint divisions & patterns</h4>
+      <SelectField label="Paint preset" values={PAINT_PRESETS} value={preset} onChange={setPreset} />
+      <label className="field">Division boundary<input aria-label="Division boundary" type="range" min="0.05" max="0.95" step="0.01" value={boundary} onChange={e => setBoundary(Number(e.target.value))} /></label>
+      <button type="button" className="button" onClick={() => {
+        const {width,height}=isolateWall(room,design.wall,design.surface).frame;
+        onChange({...design,items:[...paintPreset(width,height,preset,boundary,()=>crypto.randomUUID()),...design.items.filter(i=>i.kind!=='Paint section')]});
+      }}>Apply paint preset</button>
+      <p>Applying a preset replaces paint regions. Adjust its boundary and apply again, or edit individual regions below.</p>
       <h4>Add to wall</h4>
       <div className="wall-item-catalog">{WALL_ITEM_KINDS.map(kind => <button type="button" className="button button-secondary" key={kind}
         disabled={design.items.length >= MAX_WALL_ITEMS} onClick={() => onAdd(kind)}>Add {kind.toLowerCase()}</button>)}</div>
@@ -55,6 +65,14 @@ export function WallDesignPanel({ room, design, selectedId, onSelect, onChange, 
       </div>
       <label className="wall-color-field">Item color<input type="color" aria-label="Item color" value={selected.color}
         onChange={event => onItem({ ...selected, color: event.currentTarget.value })} /><code>{selected.color}</code></label>
+      {selected.kind === 'Paint section' && <>
+        <SelectField label="Region material" values={['Paint','Plaster','Metallic']} value={selected.material ?? 'Paint'} onChange={material=>onItem({...selected,material})} />
+        <SelectField label="Region texture" values={['Plain','Linen','Stipple']} value={selected.texture ?? 'Plain'} onChange={texture=>onItem({...selected,texture})} />
+      </>}
+      {selected.polygon && selected.polygon.map((point,i)=><div key={i} className="wall-item-fields">
+        <NumberField label={`Vertex ${i+1} U ratio`} value={point.u} min={0} max={1} onChange={u=>onItem({...selected,polygon:selected.polygon!.map((p,j)=>i===j?{...p,u}:p)})} />
+        <NumberField label={`Vertex ${i+1} V ratio`} value={point.v} min={0} max={1} onChange={v=>onItem({...selected,polygon:selected.polygon!.map((p,j)=>i===j?{...p,v}:p)})} />
+      </div>)}
       <SelectField label="Item finish" value={selected.finish} values={FINISHES} onChange={finish => onItem({ ...selected, finish })} />
       <div className="wall-item-actions">
         <button type="button" className="button" disabled={!canMove(1)} onClick={() => moveLayer(1)}>Bring forward</button>

@@ -133,7 +133,14 @@ class SurfacePaintDto {
   @IsIn(FINISHES) finish!: WallItem['finish'];
 }
 
+class PaintVertexDto {
+  @number() @Min(0) @Max(1) u!: number;
+  @number() @Min(0) @Max(1) v!: number;
+}
 class WallItemDto implements WallItem {
+  @optional() @IsIn(['Plain','Linen','Stipple']) texture?: WallItem['texture'];
+  @optional() @IsIn(['Paint','Plaster','Metallic']) material?: WallItem['material'];
+  @optional() @IsArray() @ArrayMaxSize(64) @ValidateNested({ each: true }) @Type(() => PaintVertexDto) polygon?: PaintVertexDto[];
   @Matches(idPattern) id!: string;
   @trimmed() @IsString() @Length(1, 80) name!: string;
   @IsIn(WALL_ITEM_KINDS) kind!: WallItem['kind'];

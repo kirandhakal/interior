@@ -10,7 +10,7 @@ export { DEFAULT_DISPLAY, FURNITURE, FURNITURE_SCALE, INTERIOR_CATALOG, INTERIOR
 export * from './ceiling';
 export * from './dimensions';
 
-export const FINISHES = ['Matte', 'Eggshell', 'Satin'] as const;
+export const FINISHES = ['Matte', 'Eggshell', 'Satin', 'Gloss'] as const;
 export const DAYLIGHTS = ['Morning', 'Afternoon', 'Evening', 'Night'] as const;
 export const OPENINGS = ['Door', 'Window'] as const;
 export const CEILING_LIGHTS = ['Chandelier', 'Pendant light', 'Fairy lights'] as const;
