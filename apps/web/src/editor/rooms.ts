@@ -16,7 +16,7 @@ export const PRESETS = [
 
 export function newRoom(id: string, name: string, dimensions: Dimensions): Room {
   return {
-    id, name, dimensions,
+    id, name, dimensions: structuredClone(dimensions),
     walls: Object.fromEntries(roomWallIds(dimensions).map(wall => [wall, { color: WALL_DEFAULT, finish: 'Matte' }])) as WallPaint,
     daylight: 'Afternoon', openings: [], furniture: [], lights: [], options: [],
   };

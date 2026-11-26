@@ -161,7 +161,15 @@ class WallDesignDto implements WallDesign {
   @IsArray() @ArrayMaxSize(MAX_WALL_ITEMS) @IsObject({ each: true }) @ValidateNested({ each: true }) @Type(() => WallItemDto) items!: WallItemDto[];
 }
 
+class PlacementDto {
+  @number() @Min(-1000) @Max(1000) x!: number;
+  @number() @Min(-1000) @Max(1000) z!: number;
+  @number() @Min(0) @Max(360) rotation!: number;
+}
+
 class RoomDto {
+  @optional() @IsBoolean() visible?: boolean;
+  @optional() @IsObject() @ValidateNested() @Type(() => PlacementDto) placement?: PlacementDto;
   @Matches(idPattern) id!: string;
   @trimmed() @IsString() @Length(1, LIMITS.name) name!: string;
   @IsDefined() @IsObject() @ValidateNested() @Type(() => DimensionsDto) dimensions!: DimensionsDto;

@@ -672,3 +672,11 @@ details.wall-design-section { display: block; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+.room-explorer li { padding-bottom: 12px; }
+.room-explorer small { display:block; padding:4px 10px; color:#636959; }
+.room-explorer li div { display:flex; flex-wrap:wrap; gap:4px; padding:4px; }
+.room-explorer li div button { font-size:11px; width:auto; padding:5px; }
+.house-editor { padding:20px; overflow:auto; }
+.house-actions { display:flex; gap:12px; flex-wrap:wrap; }
+.house-actions label { display:grid; gap:4px; }
+.house-actions input { width:95px; padding:7px; }

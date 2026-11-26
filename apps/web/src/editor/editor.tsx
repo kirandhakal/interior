@@ -32,6 +32,10 @@ import { isCeilingView, type CameraAction, type Hit, type Tool, type View } from
 import { WallWorkspace } from './wall/workspace';
 import { wallDesignsError } from '@studio/wall-design';
 
+import { arrangeLegacy, layoutError } from '@studio/house';
+import { HouseEditor } from './house-editor';
+import { RoomExplorer } from './room-explorer';
+
 type Tab = 'Paint' | 'Ceiling' | ObjectTab;
 type Dialog = 'add' | 'room' | 'draw' | 'plan' | 'compare' | 'auth' | 'projects' | 'wall';
 type Storage = 'account' | 'browser';
@@ -58,7 +62,7 @@ function forgetLast() {
 
 function contents(project: SavedProject): Project {
   const { name, rooms } = project;
-  return { name, rooms };
+  return { name, rooms: arrangeLegacy(rooms) };
 }
 
 function pickCeilingPosition<T extends InteriorPlacement>(room: Room, fit: (x: number, z: number) => T): T {
@@ -74,6 +78,7 @@ export function Editor() {
   const project = history.current;
   const [roomId, setRoomId] = useState(project.rooms[0].id);
   const room = project.rooms.find(value => value.id === roomId) ?? project.rooms[0];
+  const [houseView, setHouseView] = useState(false);
   const [tab, setTab] = useState<Tab>('Paint');
   const [selectedWall, setWall] = useState<Wall>(DEFAULT_WALL);
   const wall = room.walls[selectedWall] ? selectedWall : roomWallIds(room.dimensions)[0];
@@ -183,7 +188,10 @@ export function Editor() {
   const changeRoom = (next: Room, group?: string | Room) => {
     const invalidDesign = wallDesignsError(next);
     if (invalidDesign) { notify(invalidDesign, true); return; }
-    edit(value => ({ ...value, rooms: value.rooms.map(item => item.id === next.id ? next : item) }), group);
+    const rooms = project.rooms.map(item => item.id === next.id ? next : item);
+    const collision = layoutError(rooms);
+    if (collision) { notify(collision, true); return; }
+    edit(value => ({ ...value, rooms }), group);
   };
 
   const selectWall = (next: Wall) => {
@@ -327,7 +335,7 @@ export function Editor() {
     try { localStorage.setItem(MEASUREMENT_PREFERENCE, next); } catch {}
   };
   const addRoom = (next: Room) => {
-    edit(value => ({ ...value, rooms: [...value.rooms, next] }));
+    edit(value => ({ ...value, rooms: arrangeLegacy([...value.rooms, { ...next, placement: undefined }]) }));
     switchRoom(next);
     setTab('Paint');
   };
@@ -371,14 +379,10 @@ export function Editor() {
         </div>
         <section className="room-navigation">
           <div className="side-section-title"><h2>Rooms</h2><span>{project.rooms.length}</span></div>
-          <ul>
-            {project.rooms.map(item => <li key={item.id}>
-              <button type="button" aria-current={item.id === room.id ? 'true' : undefined} onClick={() => {
-                touched.current = true;
-                switchRoom(item);
-              }}><Box size={17} /><span>{item.name}</span></button>
-            </li>)}
-          </ul>
+          <RoomExplorer rooms={project.rooms} active={room.id} onSelect={switchRoom} onChange={changeRoom}
+            onDuplicate={source => { const copy = structuredClone(source); copy.id = crypto.randomUUID(); copy.name = (source.name.slice(0, 73) + ' (copy)'); addRoom(copy); }}
+            onRemove={target => { const remaining = project.rooms.filter(r => r.id !== target.id); edit(p => ({ ...p, rooms: remaining })); if (target.id === room.id) switchRoom(remaining[0]); }} />
+          <button className="button" onClick={() => setHouseView(true)}>House layout &amp; preview</button>
           <div className="room-create-actions">
             <button type="button" className="button add-room" disabled={project.rooms.length >= LIMITS.rooms} onClick={() => {
               touched.current = true;
@@ -430,6 +434,9 @@ export function Editor() {
             <ViewSwitch view={view} onChange={changeView} />
           </div>
         </header>
+        {houseView ? <HouseEditor project={project} active={room} onSelect={switchRoom} onClose={() => setHouseView(false)}
+          onCorridor={() => { if (project.rooms.length < LIMITS.rooms) addRoom(newRoom(crypto.randomUUID(), 'Corridor', { length: 4, width: 1.2, height: 2.6 })); }}
+          onChange={rooms => { const error = layoutError(rooms); if (error) notify(error, true); else edit(p => ({ ...p, rooms })); }} /> : <>
         {ceilingView && <CeilingToolbar room={room} item={ceilingItem} placing={placingCeiling} missed={placementMissed} inside={view === 'Interior'}
           onChoose={chooseCeilingItem} onStart={() => startCeilingPlacement(ceilingItem)}
           onFinish={ceilingFinish => changeRoom({ ...room, ceilingFinish })}
@@ -495,6 +502,7 @@ export function Editor() {
           </div>
         </div>
         <p className="preview-note"><Info size={15} /> Screen settings and real-world lighting can change how paint looks.</p>
+        </>}
       </section>
 
       <aside className="inspector" aria-label={tab + ' options'}>

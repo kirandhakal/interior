@@ -46,6 +46,8 @@ export type PaintOption = { id: string; name: string; walls: WallPaint };
 export type Room = {
   id: string;
   name: string;
+  visible?: boolean;
+  placement?: { x: number; z: number; rotation: number };
   dimensions: Dimensions;
   walls: WallPaint;
   daylight: Daylight;
