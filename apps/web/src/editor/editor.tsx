@@ -448,7 +448,7 @@ export function Editor() {
             edit(p => ({ ...p, rooms: [...p.rooms, ...rooms] })); switchRoom(rooms[3]);
             notify('Added five connected rooms. Your existing rooms are retained alongside the example.');
           }}
-          onChange={rooms => { try { const changed = rooms.filter(r => r !== project.rooms.find(old => old.id === r.id)); const updated = changed.length === 1 && project.rooms.some(r => r.id === changed[0].id) ? updateHouseRoom(project.rooms, changed[0]) : rooms; const error = layoutError(updated); if (error) notify(error, true); else edit(p => ({ ...p, rooms: updated })); } catch (error) { notify((error as Error).message, true); } }} /> : <>
+          onChange={rooms => { try { const changed = rooms.filter(r => r !== project.rooms.find(old => old.id === r.id)); const updated = rooms.length === project.rooms.length && changed.length === 1 && project.rooms.some(r => r.id === changed[0].id) ? updateHouseRoom(project.rooms, changed[0]) : rooms; const error = layoutError(updated); if (error) notify(error, true); else edit(p => ({ ...p, rooms: updated })); } catch (error) { notify((error as Error).message, true); } }} /> : <>
         {ceilingView && <CeilingToolbar room={room} item={ceilingItem} placing={placingCeiling} missed={placementMissed} inside={view === 'Interior'}
           onChoose={chooseCeilingItem} onStart={() => startCeilingPlacement(ceilingItem)}
           onFinish={ceilingFinish => changeRoom({ ...room, ceilingFinish })}

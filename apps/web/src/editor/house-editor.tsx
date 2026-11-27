@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import { Armchair, Bath, Box, Footprints, Grid2X2, Home, MousePointer2, Move, PencilRuler, Plus, RotateCcw, Scan, Trees, Undo2, X, type LucideIcon } from 'lucide-react';
-import { bounds, connectRooms, footprint, physicalWalls, pose, snapRoom, totalArea, world, layoutError, connectionError, isOpenSpace } from '@studio/house';
-import { LIMITS, SPACE_TYPES, roomPlan, type Project, type Room, type SpaceType, type PlanPoint } from '@studio/model';
+import { useState, useEffect } from 'react';
+import { Link2, Trash2, Minus, Armchair, Bath, Box, Footprints, Grid2X2, Home, MousePointer2, Move, PencilRuler, Plus, RotateCcw, Scan, Trees, Undo2, X, type LucideIcon } from 'lucide-react';
+import { attachSpace, removeHouseSpace, bounds, connectRooms, footprint, physicalWalls, pose, snapRoom, totalArea, world, layoutError, connectionError, isOpenSpace } from '@studio/house';
+import { LIMITS, SPACE_TYPES, roomPlan, type Project, type Room, type SpaceType, type PlanPoint, type Wall } from '@studio/model';
 import type { MeasurementUnit } from '@studio/measurement';
 import { applyRoomOutline } from '@studio/room-outline';
 import { HousePreview } from './house-preview';
@@ -21,6 +21,11 @@ const info = (r: Room) => library.find(item => item.type === r.spaceType) ?? lib
 type Props = { project: Project; active: Room; onSelect: (r: Room) => void; onChange: (rooms: Room[]) => void; onClose: () => void; onAddRoom: () => void; onOpenings: () => void; onExample: () => void };
 
 export function HouseEditor({ project, active, onSelect, onChange, onClose, onAddRoom, onOpenings, onExample }: Props) {
+  const [attachKind, setAttachKind] = useState<SpaceType>('Bathroom');
+  const [attachWall, setAttachWall] = useState<Wall>();
+  const [withDoor, setWithDoor] = useState(true);
+  const [removing, setRemoving] = useState(false);
+  useEffect(() => { setRemoving(false); setAttachWall(undefined); }, [active.id]);
   const [preview, setPreview] = useState(false);
   const [mode, setMode] = useState<'select' | 'place' | 'draw'>('select');
   const [kind, setKind] = useState<SpaceType>('Corridor');
@@ -53,6 +58,18 @@ export function HouseEditor({ project, active, onSelect, onChange, onClose, onAd
     if (snap) room = snapRoom(room, project.rooms) as typeof room;
     add(room);
   }
+  function attach() {
+    const item = library.find(item => item.type === attachKind)!;
+    const next = { ...newRoom(crypto.randomUUID(), attachKind, { length: item.size[0], width: item.size[1], height: active.dimensions.height }), spaceType: attachKind };
+    try {
+      const result = attachSpace(project.rooms, active, next, attachWall ?? roomPlan(active.dimensions).edges[0].id, withDoor);
+      if (commit(result)) { onSelect(result.find(r => r.id === next.id)!); resetTool(); }
+    } catch (e) { setError((e as Error).message); }
+  }
+  function remove() {
+    try { const next = removeHouseSpace(project.rooms, active.id); if (commit(next)) { onSelect(next[0]); setRemoving(false); resetTool(); } }
+    catch (e) { setError((e as Error).message); }
+  }
   function finishDrawing() {
     const base = { ...newRoom(crypto.randomUUID(), kind, { length: 4, width: 3, height: 2.6 }), spaceType: kind, placement: { x: 0, z: 0, rotation: 0 } };
     // Keep local coordinates close to the origin, even in a large house.
@@ -67,7 +84,7 @@ export function HouseEditor({ project, active, onSelect, onChange, onClose, onAd
   }
   const resetTool = () => { setMode('select'); setPoints([]); setError(undefined); };
   return <section className="house-editor" aria-label="House layout editor">
-    <div className="house-heading"><div><p className="overline">PLAN YOUR HOME</p><h2>Every space has a place.</h2><p>Arrange rooms, leave breathing space, and draw the connections between them.</p></div>
+    <div className="house-heading"><div><p className="overline">PLAN YOUR HOME</p><h2>Build your house layout</h2><p>Add spaces, attach them to a room, or draw your own outline.</p></div>
       <button className="button button-secondary" onClick={() => { setPreview(!preview); resetTool(); }}><Box size={17} />{preview ? 'Whole-house top view' : 'House 3D'}</button></div>
     <div className="house-workbench">
       <aside className="house-library" aria-label="Space library"><h3><Plus size={17} /> Add a space</h3><p>Drag onto the plan, or choose a tile and click where it belongs.</p>
@@ -83,17 +100,17 @@ export function HouseEditor({ project, active, onSelect, onChange, onClose, onAd
           <button className="button" aria-pressed={mode === 'select'} onClick={resetTool}><MousePointer2 size={16} /> Select & move</button>
           <button className="button" disabled={preview} aria-pressed={mode === 'draw'} onClick={() => { setMode('draw'); setPoints([]); setError(undefined); }}><PencilRuler size={16} /> Draw a space</button>
         </div><label><input type="checkbox" checked={snap} onChange={e => setSnap(e.target.checked)} /> Snap to fit</label>
-          <details className="house-view-menu"><summary>View</summary><div><button className="button" onClick={() => setZoom(Math.max(.4, zoom / 1.25))}>Zoom in</button><button className="button" onClick={() => setZoom(Math.min(4, zoom * 1.25))}>Zoom out</button><button className="button" onClick={() => setZoom(1)}><Scan size={15} /> Fit house</button></div></details>
+          <div className="house-zoom"><button className="button" aria-label="Zoom out" onClick={() => setZoom(Math.min(4, zoom * 1.25))}><Minus size={16} /></button><button className="button" onClick={() => setZoom(1)}><Scan size={16} /> Fit</button><button className="button" aria-label="Zoom in" onClick={() => setZoom(Math.max(.4, zoom / 1.25))}><Plus size={16} /></button></div><details className="house-view-menu"><summary>View</summary><div><button className="button" onClick={() => setZoom(Math.max(.4, zoom / 1.25))}>Zoom in</button><button className="button" onClick={() => setZoom(Math.min(4, zoom * 1.25))}>Zoom out</button><button className="button" onClick={() => setZoom(1)}><Scan size={15} /> Fit house</button></div></details>
         </div>
         {mode !== 'select' && <div className="house-draw-bar">{mode === 'draw' ? <><label>Drawing <select aria-label="Space to draw" value={kind} onChange={e => setKind(e.target.value as SpaceType)}>{SPACE_TYPES.map(type => <option key={type}>{type}</option>)}</select></label><button className="button" disabled={!points.length} onClick={() => setPoints(points.slice(0, -1))}><Undo2 size={15} /> Last point</button><button className="button button-primary" disabled={points.length < 3} onClick={finishDrawing}>Finish space</button></> : <span>Click the plan to place a {kind.toLowerCase()}.</span>}<button className="button" onClick={resetTool}><X size={15} /> Cancel</button></div>}
-        {preview ? <HousePreview rooms={rooms} /> : <svg className={`house-canvas ${mode !== 'select' ? 'is-drawing' : ''}`} aria-label="Drag rooms in the global floor plan" viewBox={`${minX} ${minZ} ${w} ${h}`}
+        {preview ? <HousePreview rooms={rooms} /> : <svg onDragStart={e => e.preventDefault()} onContextMenu={e => e.preventDefault()} className={`house-canvas ${mode !== 'select' ? 'is-drawing' : ''}`} aria-label="Drag rooms in the global floor plan" viewBox={`${minX} ${minZ} ${w} ${h}`}
           onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }} onDrop={e => { e.preventDefault(); const type = e.dataTransfer.getData('application/house-space') as SpaceType; if (SPACE_TYPES.includes(type)) place(type, pointAt(e.currentTarget, e.clientX, e.clientY)); }}
-          onPointerDown={e => { if (mode === 'select') return; const p = pointAt(e.currentTarget, e.clientX, e.clientY); if (mode === 'place') place(kind, p); else { setPoints([...points, p]); setError(undefined); } }}
+          onPointerDown={e => { if (e.button !== 0) return; e.preventDefault(); if (mode === 'select') return; const p = pointAt(e.currentTarget, e.clientX, e.clientY); if (mode === 'place') place(kind, p); else { setPoints([...points, p]); setError(undefined); } }}
           onPointerMove={e => { if (!drag) return; const p = pointAt(e.currentTarget, e.clientX, e.clientY); const next = { ...drag.start, placement: { ...pose(drag.start), x: pose(drag.start).x + p.x - drag.x, z: pose(drag.start).z + p.z - drag.z } }; setDraft(snap ? snapRoom(next, project.rooms.filter(r => r.id !== next.id)) : next); }}
           onPointerUp={() => { if (draft) update(draft); setDrag(undefined); setDraft(undefined); }} onPointerCancel={() => { setDrag(undefined); setDraft(undefined); }}>
           <defs><pattern id="house-grid" width="1" height="1" patternUnits="userSpaceOnUse"><path d="M 1 0 L 0 0 0 1" fill="none" stroke="#dce3e8" strokeWidth="0.025" /></pattern></defs>
           <rect x={minX} y={minZ} width={w} height={h} fill="url(#house-grid)" />
-          {rooms.filter(r => r.visible !== false).map(r => { const p = footprint(r), box = bounds(p), selected = r.id === active.id; return <g key={r.id} role="button" tabIndex={0} aria-label={`Select ${r.name}`} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(r); } }} onPointerDown={e => { if (mode !== 'select') return; e.stopPropagation(); e.currentTarget.ownerSVGElement!.setPointerCapture(e.pointerId); const p = pointAt(e.currentTarget.ownerSVGElement!, e.clientX, e.clientY); onSelect(r); setError(undefined); setDrag({ ...p, start: r }); }}>
+          {rooms.filter(r => r.visible !== false).map(r => { const p = footprint(r), box = bounds(p), selected = r.id === active.id; return <g key={r.id} role="button" tabIndex={0} aria-label={`Select ${r.name}`} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(r); } }} onPointerDown={e => { if (mode !== 'select' || e.button !== 0) return; e.preventDefault(); e.stopPropagation(); e.currentTarget.ownerSVGElement!.setPointerCapture(e.pointerId); const p = pointAt(e.currentTarget.ownerSVGElement!, e.clientX, e.clientY); onSelect(r); setError(undefined); setDrag({ ...p, start: r }); }}>
             <polygon points={p.map(p => `${p.x},${p.z}`).join(' ')} fill={info(r).color} stroke={selected ? '#236b90' : '#7e8d96'} strokeWidth={selected ? .1 : .05} strokeDasharray={isOpenSpace(r) ? '.15 .1' : undefined} />
             <text x={(box.minX + box.maxX) / 2} y={(box.minZ + box.maxZ) / 2} textAnchor="middle" fontSize="0.4" pointerEvents="none">{r.name}</text>
             <text x={(box.minX + box.maxX) / 2} y={(box.minZ + box.maxZ) / 2 + .44} textAnchor="middle" fontSize="0.27" fill="#4b5963" pointerEvents="none">{totalArea([r]).toFixed(1)} m²{r.spaceType === 'Stairs' ? ' · stairwell' : ''}</text>
@@ -106,13 +123,24 @@ export function HouseEditor({ project, active, onSelect, onChange, onClose, onAd
         {(error || (draft && layoutError(rooms))) && <p className="inline-error" role="alert">{error ?? layoutError(rooms)} Choose a clear area or adjust the outline.</p>}
       </div>
       <aside className="house-inspector" aria-label="Selected space"><p className="overline">SELECTED SPACE</p><h3>{active.name}</h3>
+        <label className="field"><span>Select a space</span><select aria-label="Select a space" value={active.id} onChange={e => onSelect(project.rooms.find(r => r.id === e.target.value)!)}>{project.rooms.map(r => <option key={r.id} value={r.id}>{r.name}{r.visible === false ? ' (hidden)' : ''}</option>)}</select></label>
         <label className="field"><span>Name</span><input key={active.id + active.name} aria-label="Space name" defaultValue={active.name} maxLength={LIMITS.name} onBlur={e => { const name = e.target.value.trim(); if (name && name !== active.name) update({ ...active, name }); }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} /></label>
         <label className="field"><span>Space type</span><select value={active.spaceType ?? 'Room'} onChange={e => update({ ...active, spaceType: e.target.value as SpaceType })}>{SPACE_TYPES.map(type => <option key={type}>{type}</option>)}</select></label>
         <button className="button button-primary" onClick={() => setEditing(true)}><PencilRuler size={16} /> Edit shape & size</button>
         {active.spaceType === 'Stairs' && <p className="house-help">A stairwell reserves floor space. Steps and upper floors are not modeled.</p>}
         {isOpenSpace(active) && <p className="house-help">Dashed edges mark an open area without enclosing walls.</p>}
-        <details open><summary>Position & rotation</summary><div className="house-position">{(['x', 'z', 'rotation'] as const).map(key => <label key={active.id + key + pose(active)[key]}>{key === 'x' ? 'Left / right (m)' : key === 'z' ? 'Up / down (m)' : 'Rotation (°)'}<input aria-label={`Room ${key}`} type="number" step={key === 'rotation' ? 15 : .1} defaultValue={Number(pose(active)[key].toFixed(2))} onBlur={e => { if (!e.target.value) return; const value = Number(e.target.value); if (Number.isFinite(value) && value !== pose(active)[key]) update({ ...active, placement: { ...pose(active), [key]: key === 'rotation' ? (value % 360 + 360) % 360 : value } }); }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} /></label>)}</div><button className="button button-secondary" onClick={() => update({ ...active, placement: { ...pose(active), rotation: (pose(active).rotation + 90) % 360 } })}><RotateCcw size={15} /> Rotate 90°</button></details>
+        {!isOpenSpace(active) && <details className="house-attach" open><summary><Link2 size={16} /> Attach to this room</summary><p className="house-help">Place a new space against a wall of {active.name}.</p>
+          <label className="field"><span>Add</span><select aria-label="Attached space type" value={attachKind} onChange={e => setAttachKind(e.target.value as SpaceType)}>{library.map(item => <option key={item.type}>{item.type}</option>)}</select></label>
+          <label className="field"><span>Along wall</span><select aria-label="Attachment wall" value={attachWall ?? roomPlan(active.dimensions).edges[0].id} onChange={e => setAttachWall(e.target.value as Wall)}>{roomPlan(active.dimensions).edges.map((edge, i) => <option key={edge.id} value={edge.id}>{edge.id.startsWith('wall-') ? `Wall ${i + 1}` : edge.id[0].toUpperCase() + edge.id.slice(1)} · {edge.span.toFixed(1)} m</option>)}</select></label>
+          <label className="house-check"><input type="checkbox" checked={withDoor} onChange={e => setWithDoor(e.target.checked)} /> Add connecting door</label>
+          <button className="button button-primary" disabled={project.rooms.length >= LIMITS.rooms} onClick={attach}><Link2 size={16} /> Attach {attachKind.toLowerCase()}</button>
+        </details>}
+        <details><summary>Position & rotation</summary><div className="house-position">{(['x', 'z', 'rotation'] as const).map(key => <label key={active.id + key + pose(active)[key]}>{key === 'x' ? 'Left / right (m)' : key === 'z' ? 'Up / down (m)' : 'Rotation (°)'}<input aria-label={`Room ${key}`} type="number" step={key === 'rotation' ? 15 : .1} defaultValue={Number(pose(active)[key].toFixed(2))} onBlur={e => { if (!e.target.value) return; const value = Number(e.target.value); if (Number.isFinite(value) && value !== pose(active)[key]) update({ ...active, placement: { ...pose(active), [key]: key === 'rotation' ? (value % 360 + 360) % 360 : value } }); }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} /></label>)}</div><button className="button button-secondary" onClick={() => update({ ...active, placement: { ...pose(active), rotation: (pose(active).rotation + 90) % 360 } })}><RotateCcw size={15} /> Rotate 90°</button></details>
         {!isOpenSpace(active) && <details open><summary>Doors & connections</summary><button className="button button-secondary" onClick={onOpenings}>Doors & windows</button>{!shared.length && <p className="house-help">Move two rooms edge to edge to add a connecting door.</p>}{shared.map((s, i) => { const connected = s.sides[0].room.openings.some(o => o.connectionId && s.sides[1].room.openings.some(other => other.connectionId === o.connectionId)); const name = s.sides.find(s => s.room.id !== active.id)!.room.name; return <button disabled={connected} className="button button-secondary" key={i} onClick={() => { try { const linked = connectRooms(s); commit(project.rooms.map(r => linked.find(n => n.id === r.id) ?? r)); } catch (e) { setError((e as Error).message); } }}>{connected ? `Connected to ${name} ✓` : `Connect to ${name} with door`}</button>; })}</details>}
+        <div className="house-remove"><button className="button button-danger" disabled={project.rooms.length <= 1} onClick={() => setRemoving(true)}><Trash2 size={16} /> Remove selected space</button>
+          {project.rooms.length <= 1 && <small>Keep at least one space in your house.</small>}
+          {removing && <div role="alert"><p>Remove {active.name} and its contents? Connecting doors will also be removed. You can undo this.</p><button className="button button-danger" onClick={remove}>Confirm removal</button><button className="button button-secondary" onClick={() => setRemoving(false)}>Keep space</button></div>}
+        </div>
         <button className="button button-secondary" onClick={onClose}><Home size={16} /> Edit selected room</button>
       </aside>
     </div>

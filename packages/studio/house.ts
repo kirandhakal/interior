@@ -143,3 +143,37 @@ export function connectionError(rooms: Room[]) {
     if (a.kind!==b.kind || a.width!==b.width || a.height!==b.height || a.sill!==b.sill) return 'Connected doorway dimensions must match.';
   }
 }
+
+/** Place a rectangular addition flush against any wall, including rotated rooms. */
+export function attachSpace(rooms: Room[], host: Room, addition: Room, wall: Wall, withDoor = false): Room[] {
+  if (rooms.length >= LIMITS.rooms) throw new Error(`A house can contain up to ${LIMITS.rooms} spaces.`);
+  const edge = roomPlan(host.dimensions).walls[wall];
+  if (!edge || isOpenSpace(host)) throw new Error('Choose an enclosed room and one of its walls.');
+  const center = world(host, { x: edge.midpoint.x + edge.normal.x * addition.dimensions.width / 2, z: edge.midpoint.z + edge.normal.z * addition.dimensions.width / 2 });
+  const placed = { ...addition, placement: { ...center, rotation: ((Math.atan2(edge.tangent.z, edge.tangent.x) * 180 / Math.PI + pose(host).rotation) % 360 + 360) % 360 } };
+  let result = [...rooms, placed];
+  const collision = layoutError(result);
+  if (collision) throw new Error(`${collision} Choose another wall or move the neighboring space.`);
+  if (withDoor) {
+    if (isOpenSpace(placed)) {
+      const opening = { id: crypto.randomUUID(), kind: 'Door' as const, wall, offset: 0, width: .9, height: Math.min(2.05, host.dimensions.height - .1), sill: 0 };
+      const next = { ...host, openings: [...host.openings, opening] };
+      if (host.openings.length >= LIMITS.openings || !openingFits(host, opening) || wallDesignsError(next)) throw new Error('A door cannot fit here. Choose another wall or turn off the connecting door.');
+      result = result.map(r => r.id === host.id ? next : r);
+    } else {
+      const shared = physicalWalls([host, placed]).find(s => s.sides.length === 2);
+      if (!shared) throw new Error('These spaces do not share a wall. Choose another wall.');
+      const linked = connectRooms(shared);
+      result = result.map(r => linked.find(next => next.id === r.id) ?? r);
+    }
+  }
+  const invalid = connectionError(result);
+  if (invalid) throw new Error(invalid);
+  return result;
+}
+
+export function removeHouseSpace(rooms: Room[], id: string): Room[] {
+  if (rooms.length <= 1) throw new Error('Keep at least one space in your house.');
+  const connections = new Set(rooms.find(r => r.id === id)?.openings.map(o => o.connectionId).filter(Boolean));
+  return rooms.filter(r => r.id !== id).map(r => ({ ...r, openings: r.openings.filter(o => !o.connectionId || !connections.has(o.connectionId)) }));
+}

@@ -82,3 +82,21 @@ test('API preserves space categories and rejects unknown categories',async()=>{
  assert.equal(saved.rooms[0].spaceType,'Balcony');
  await assert.rejects(()=>pipe.transform({...value,rooms:[{...room('a'),spaceType:'invalid'}]},{type:'body',metatype:CreateProjectDto}));
 });
+test('attachments align to rotated walls, connect doors and reject occupied space',()=>{
+ const {attachSpace,connectionError,layoutError,removeHouseSpace}=require('../packages/studio/house.ts');
+ for(const rotation of [0,90,37]) for(const wall of ['north','east','south','west']) {
+  const host=room('host',0,0,rotation), bath={...room('bath'),spaceType:'Bathroom',dimensions:{length:2.4,width:2,height:2.6}};
+  const attached=attachSpace([host],host,bath,wall,true);
+  assert.equal(attached.length,2);assert.equal(layoutError(attached),undefined);assert.equal(connectionError(attached),undefined);
+  assert.equal(attached[0].openings.length,1);assert.equal(attached[1].openings.length,1);
+  assert.throws(()=>attachSpace(attached,attached[0],{...bath,id:'other'},wall),/overlaps/);
+  const removed=removeHouseSpace(attached,'bath');assert.equal(removed.length,1);assert.equal(removed[0].openings.length,0);
+ }
+});
+test('balcony attachments add an access door without enclosing the balcony',()=>{
+ const {attachSpace,connectionError}=require('../packages/studio/house.ts');
+ const host=room('host');const balcony={...room('balcony'),spaceType:'Balcony',dimensions:{length:4,width:1.5,height:2.6}};
+ const result=attachSpace([host],host,balcony,'north',true);
+ assert.equal(result[0].openings.length,1);assert.equal(result[1].openings.length,0);
+ assert.equal(physicalWalls(result).length,4);assert.equal(connectionError(result),undefined);
+});

@@ -735,3 +735,17 @@ details.wall-design-section { display: block; }
 .house-toolbar input[type=checkbox] { appearance:auto; width:16px; height:16px; min-height:0; padding:0; flex:0 0 16px; accent-color:#236b90; }
 .house-toolbar label { white-space:nowrap; }
 @media(max-width:800px) { .studio-layout.house-mode { grid-template-columns:minmax(0,1fr); } .house-mode .room-navigation { flex-wrap:wrap; min-width:0; } .house-mode .house-entry { width:auto; flex:1 1 100%; } }
+/* Keep browser text dragging and native drag cursors out of the plan. */
+.house-canvas { user-select:none; -webkit-user-select:none; }
+.house-canvas g[role=button] { cursor:move; }
+.house-canvas text { user-select:none; -webkit-user-select:none; }
+.house-zoom { display:flex; gap:2px; margin-left:auto; }
+.house-attach { padding:12px; border:1px solid #c9dce6; border-radius:10px; background:#edf5f8; }
+.house-attach summary { display:flex; align-items:center; gap:6px; }
+.house-check { display:flex; align-items:center; gap:8px; font-size:.875rem; }
+.house-check input[type=checkbox] { width:16px; height:16px; padding:0; flex:0 0 16px; accent-color:#236b90; }
+.house-remove { margin-top:18px; padding-top:12px; border-top:1px solid #d8e0e5; font-size:.875rem; }
+.house-remove small { display:block; color:#637482; }
+.house-inspector .button-danger { color:#a02f2f; border-color:#e5c5c5; background:#fff4f4; }
+@media(min-width:1251px) { .house-workbench { grid-template-columns:180px minmax(280px,1fr) 250px; align-items:start; } .house-workspace { position:sticky; top:10px; } .house-canvas { height: min(65vh,700px); min-height:460px; } }
+@media(max-width:800px) { .house-mode .room-navigation > .house-entry { margin:0; } .house-mode .room-sidebar { padding-block:12px; } }
