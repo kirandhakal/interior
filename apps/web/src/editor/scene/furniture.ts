@@ -1,8 +1,10 @@
 import {
-  BoxGeometry, CylinderGeometry, Group, Mesh, MeshStandardMaterial, PlaneGeometry, SphereGeometry, type Object3D,
+  DoubleSide, Group, LineBasicMaterial, LineSegments, Mesh, MeshStandardMaterial, PlaneGeometry, SphereGeometry,
 } from 'three';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { FURNITURE_SIZE, type FurnitureKind } from '@studio/model';
+import { getDisplay, hasDisplay, INTERIOR_CATALOG, type Furniture, type FurnitureKind } from '@studio/model';
+import { box, cylinder } from './primitives';
+import { addCabinet, addDevice, addInteriorModel } from './household';
+import type { Swing } from './swing';
 import { artTexture, rugTexture, windowTexture } from './textures';
 
 const material = (color: string, roughness = 0.85) => new MeshStandardMaterial({ color, roughness });
@@ -19,35 +21,14 @@ export function createAssets() {
     rug: new MeshStandardMaterial({ map: rug, roughness: 1 }),
     art: new MeshStandardMaterial({ map: artwork, roughness: 0.83 }),
     glass: new MeshStandardMaterial({ map: window, emissive: '#cbd3c4', emissiveIntensity: 0.22, roughness: 1 }),
+    glazing: new MeshStandardMaterial({ color: '#b9d8dd', transparent: true, opacity: 0.18, depthWrite: false, roughness: 0.27, side: DoubleSide }),
+    swingMark: new LineBasicMaterial({ color: '#5e7750', transparent: true, opacity: 0.85, depthTest: false, depthWrite: false }),
     trim: material('#e9e4d8'), edge: material('#ece9df'), base: material('#d6cbbb'),
     textures: [rug, artwork, window],
   };
 }
 
 export type SceneAssets = ReturnType<typeof createAssets>;
-
-export function box(
-  parent: Object3D, mat: MeshStandardMaterial, w: number, h: number, d: number,
-  x: number, y: number, z: number, radius = 0,
-) {
-  const geo = radius ? new RoundedBoxGeometry(w, h, d, 2, radius) : new BoxGeometry(w, h, d);
-  const mesh = new Mesh(geo, mat);
-  mesh.position.set(x, y, z);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  parent.add(mesh);
-  return mesh;
-}
-
-function cylinder(parent: Object3D, mat: MeshStandardMaterial, top: number, bottom: number, height: number, x: number, y: number, z: number, scaleZ = 1) {
-  const mesh = new Mesh(new CylinderGeometry(top, bottom, height, 32), mat);
-  mesh.position.set(x, y, z);
-  mesh.scale.z = scaleZ;
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  parent.add(mesh);
-  return mesh;
-}
 
 function plant(group: Group, a: SceneAssets) {
   cylinder(group, a.clay, 0.205, 0.14, 0.31, 0, 0.155, 0);
@@ -100,7 +81,7 @@ function armchair(group: Group, a: SceneAssets) {
   }
 }
 
-export function createFurniture(kind: FurnitureKind, a: SceneAssets) {
+function classicFurniture(kind: FurnitureKind, a: SceneAssets, swings: Swing[]) {
   const g = new Group();
   switch (kind) {
     case 'Sofa': sofa(g, a); break;
@@ -116,7 +97,7 @@ export function createFurniture(kind: FurnitureKind, a: SceneAssets) {
       cylinder(g, a.cream, 0.077, 0.074, 0.011, 0.23, 0.521, -0.09);
       break;
     case 'Rug': {
-      const [width, depth] = FURNITURE_SIZE.Rug;
+      const [width, depth] = INTERIOR_CATALOG.Rug.size;
       const mesh = new Mesh(new PlaneGeometry(width, depth), a.rug);
       mesh.rotation.x = -Math.PI / 2;
       mesh.position.y = 0.009;
@@ -126,11 +107,7 @@ export function createFurniture(kind: FurnitureKind, a: SceneAssets) {
     }
     case 'Plant': plant(g, a); break;
     case 'Sideboard':
-      box(g, a.wood, 1.38, 0.43, 0.47, 0, 0.365, 0, 0.023);
-      for (const x of [-0.46, 0, 0.46]) {
-        box(g, a.wood, 0.437, 0.38, 0.026, x, 0.36, 0.23, 0.015);
-        box(g, a.walnut, 0.12, 0.022, 0.028, x, 0.43, 0.256, 0.009);
-      }
+      addCabinet(g, a, 1.38, 0.51, 0.59, 1, 3, swings, 0.15);
       for (const x of [-0.56, 0.56]) for (const z of [-0.15, 0.15]) cylinder(g, a.walnut, 0.031, 0.028, 0.16, x, 0.08, z);
       cylinder(g, a.cream, 0.113, 0.126, 0.13, 0.40, 0.64, 0);
       cylinder(g, a.clay, 0.061, 0.069, 0.23, -0.40, 0.70, -0.06);
@@ -143,6 +120,48 @@ export function createFurniture(kind: FurnitureKind, a: SceneAssets) {
       g.add(art);
       break;
     }
+    default: addInteriorModel(g, kind, a, swings);
   }
   return g;
+}
+
+export function createFurniture(item: Furniture, assets: SceneAssets) {
+  const tinted = item.color ? (item.kind === 'Rug' ? assets.rug.clone() : new MeshStandardMaterial({ roughness: 0.78 })) : undefined;
+  if (tinted && item.color) tinted.color.set(item.color);
+  const palette = tinted ? {
+    ...assets, wood: tinted, linen: tinted, linenLight: tinted, sage: tinted, clay: tinted, trim: tinted,
+    walnut: item.kind === 'Wall art' ? tinted : assets.walnut,
+    black: hasDisplay(item.kind) ? tinted : assets.black,
+    rug: item.kind === 'Rug' ? tinted : assets.rug,
+  } : assets;
+  const swings: Swing[] = [];
+  const group = classicFurniture(item.kind, palette, swings);
+  const display = item.display ?? getDisplay(item.kind);
+  const device = item.kind === 'TV' || item.kind === 'Desktop PC' ? addDevice(group, item.kind, display, palette) : undefined;
+  return {
+    group,
+    kind: item.kind,
+    color: item.color,
+    screens: hasDisplay(item.kind) ? display.count : undefined,
+    showSwingGuides(show: boolean) { for (const swing of swings) swing.showGuide(show); },
+    tickSwing(progress: number) {
+      let moving = false;
+      for (const swing of swings) if (swing.advance(progress)) moving = true;
+      return moving;
+    },
+    update(value: Furniture, height: number) {
+      const scale = value.scale ?? 1;
+      group.scale.setScalar(scale);
+      const y = value.kind === 'Wall art' ? Math.min(0, height - 2.35 * scale) : 0;
+      group.position.set(value.x, y, value.z);
+      group.rotation.y = value.rotation * Math.PI / 180;
+      for (const swing of swings) swing.setAngle(value.doorAngle ?? 0);
+      device?.update(value.display ?? getDisplay(value.kind));
+    },
+    dispose() {
+      group.traverse(child => { if (child instanceof Mesh || child instanceof LineSegments) child.geometry.dispose(); });
+      tinted?.dispose();
+      device?.dispose();
+    },
+  };
 }

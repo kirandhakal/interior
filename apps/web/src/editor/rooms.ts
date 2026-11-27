@@ -1,27 +1,29 @@
 import {
-  WALLS, fitFurniture, fitLight, fitOpening, furnitureFitsRoom, openingFits,
-  type Dimensions, type Furniture, type FurnitureKind, type Light, type LightKind,
+  WALL_DEFAULT, fitFurniture, fitOpening, furnitureFitsRoom, openingFits, roomWallIds,
+  type Dimensions, type Furniture, type FurnitureKind,
   type Opening, type OpeningKind, type Project, type Room, type Wall, type WallPaint,
 } from '@studio/model';
+import type { InteriorPlacement } from './interior-placement';
+import { wallDesignsError } from '@studio/wall-design';
 
-export const WALL_DEFAULT = '#EAE4D8';
+export { WALL_DEFAULT } from '@studio/model';
 export const PRESETS = [
-  { name: 'Living room', length: 5.8, width: 4.4, height: 2.85 },
-  { name: 'Bedroom', length: 4.2, width: 3.5, height: 2.65 },
-  { name: 'Home office', length: 3.6, width: 3, height: 2.6 },
-  { name: 'Custom room', length: 4, width: 3.5, height: 2.6 },
+  { name: 'Living room', dimensions: { length: 5.8, width: 4.4, height: 2.85 } },
+  { name: 'Bedroom', dimensions: { length: 4.2, width: 3.5, height: 2.65 } },
+  { name: 'Home office', dimensions: { length: 3.6, width: 3, height: 2.6 } },
+  { name: 'Custom room', dimensions: { length: 4, width: 3.5, height: 2.6 } },
 ];
 
 export function newRoom(id: string, name: string, dimensions: Dimensions): Room {
   return {
-    id, name, dimensions,
-    walls: Object.fromEntries(WALLS.map(wall => [wall, { color: WALL_DEFAULT, finish: 'Matte' }])) as WallPaint,
+    id, name, dimensions: structuredClone(dimensions),
+    walls: Object.fromEntries(roomWallIds(dimensions).map(wall => [wall, { color: WALL_DEFAULT, finish: 'Matte' }])) as WallPaint,
     daylight: 'Afternoon', openings: [], furniture: [], lights: [], options: [],
   };
 }
 
 export function starterProject(): Project {
-  const { name, ...dimensions } = PRESETS[0];
+  const { name, dimensions } = PRESETS[0];
   const room = newRoom('living-room', name, dimensions);
   room.walls.north.color = '#A4AB94';
   room.walls.west.color = '#F0E9DC';
@@ -42,32 +44,20 @@ export function starterProject(): Project {
   return { name: 'My home', rooms: [room] };
 }
 
-export function resizeRoom(room: Room, name: string, dimensions: Dimensions): Room | undefined {
-  const updated = { ...room, name, dimensions, openings: room.openings.map(opening => fitOpening(dimensions, opening)) };
-  if (!updated.openings.every(opening => openingFits(updated, opening))) return;
-  const furniture = room.furniture.map(item => fitFurniture(dimensions, item));
-  if (furniture.some(item => !furnitureFitsRoom(dimensions, item))) return;
-  return { ...updated, furniture, lights: room.lights.map(light => fitLight(dimensions, light)) };
-}
-
 export function addOpening(room: Room, kind: OpeningKind, wall: Wall): Opening | undefined {
-  const base = { id: crypto.randomUUID(), kind, wall, width: kind === 'Door' ? 0.9 : 1.2,
-    height: kind === 'Door' ? 2.05 : 1.1, sill: kind === 'Door' ? 0 : 0.85 };
+  const base = { id: crypto.randomUUID(), kind, wall, width: kind !== 'Window' ? 0.9 : 1.2,
+    height: kind !== 'Window' ? 2.05 : 1.1, sill: kind !== 'Window' ? 0 : 0.85 };
   const offsets = [0, -0.55, 0.55, -1.1, 1.1, -1.65, 1.65, -2.2, 2.2, -3, 3, -4, 4, -6, 6, -8, 8];
   return offsets.map(offset => fitOpening(room.dimensions, { ...base, offset }))
-    .find(opening => openingFits(room, opening));
+    .find(opening => openingFits(room, opening) && !wallDesignsError({ ...room, openings: [...room.openings, opening] }));
 }
 
-export function addFurniture(room: Room, kind: FurnitureKind): Furniture | undefined {
+export function addFurniture(room: Room, kind: FurnitureKind, placement?: InteriorPlacement): Furniture | undefined {
   const positions = [[0, 0], [1, 1], [-1, 1], [1, -1], [-1, -1], [0, 1.5], [1.8, 0], [-1.8, 0]];
   const id = crypto.randomUUID();
   const seed = fitFurniture(room.dimensions, { id, kind, x: 0, z: 0, rotation: 0 });
   if (!furnitureFitsRoom(room.dimensions, seed)) return;
+  if (placement) return fitFurniture(room.dimensions, { ...seed, ...placement });
   const candidates = positions.map(([x, z]) => fitFurniture(room.dimensions, { ...seed, x, z }));
   return candidates.find(item => room.furniture.every(other => Math.hypot(item.x - other.x, item.z - other.z) > 0.65)) ?? candidates[0];
-}
-
-export function addLight(room: Room, kind: LightKind): Light {
-  return fitLight(room.dimensions, { id: crypto.randomUUID(), kind, x: Math.sin(room.lights.length) * 1.5, z: 0.15,
-    y: room.dimensions.height - 0.2, brightness: 60, warmth: 3300, direction: 0, tilt: 25 });
 }

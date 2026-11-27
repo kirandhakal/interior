@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Box, Hand, Maximize, Minus, MousePointer2, Plus, Scan } from 'lucide-react';
-import type { Room } from '@studio/model';
+import { Armchair, Box, Hand, LampCeiling, Maximize, Minus, MousePointer2, Orbit, Plus, Scan } from 'lucide-react';
+import { CEILING_DECOR, CEILING_DECOR_DRAG_TYPE, FURNITURE, LIGHTS, type CeilingDecorKind, type FurnitureKind, type LightKind, type Room } from '@studio/model';
 import { IconButton, Segmented } from '@/components/ui';
-import { RoomScene, type CameraAction, type Hit, type Tool, type View } from './room-scene';
+import { INTERIOR_DRAG_TYPE, type InteriorPlacement } from '../interior-placement';
+import { FIXTURE_DRAG_TYPE, type LightPlacement } from '../lighting/fixtures';
+import { RoomScene, isCeilingView, type CameraAction, type Hit, type Tool, type View } from './room-scene';
 
 const doNothing = () => {};
 
@@ -14,19 +16,27 @@ type PreviewProps = {
   tool?: Tool;
   selection?: Hit | null;
   interactive?: boolean;
+  dragFixtures?: boolean;
+  dragInterior?: boolean;
+  dragCeilingDecor?: boolean;
   command?: { action: CameraAction };
   onSelect?: (selection: Hit) => void;
   onMove?: (room: Room, dragStart: Room) => void;
+  onPlaceCeiling?: (placement: InteriorPlacement | undefined) => void;
+  onDropFixture?: (kind: LightKind, placement: LightPlacement | undefined) => void;
+  onDropInterior?: (kind: FurnitureKind, placement: InteriorPlacement | undefined) => void;
+  onDropCeilingDecor?: (kind: CeilingDecorKind, placement: InteriorPlacement | undefined) => void;
 };
 
 export function Preview({
-  room, view, tool = 'Select', selection = null, interactive = false, command,
-  onSelect = doNothing, onMove = doNothing,
+  room, view, tool = 'Select', selection = null, interactive = false, dragFixtures = false, dragInterior = false, dragCeilingDecor = false, command,
+  onSelect = doNothing, onMove = doNothing, onPlaceCeiling, onDropFixture, onDropInterior, onDropCeilingDecor,
 }: PreviewProps) {
   const host = useRef<HTMLDivElement>(null);
   const instance = useRef<RoomScene>(null);
   const [error, setError] = useState(false);
-  const current = { room, view, tool, selection, interactive, onSelect, onMove };
+  const [dropOver, setDropOver] = useState(false);
+  const current = { room, view, tool, selection, interactive, dragFixtures, dragInterior, dragCeilingDecor, onSelect, onMove, onPlaceCeiling };
   const latest = useRef(current);
 
   useLayoutEffect(() => {
@@ -49,7 +59,40 @@ export function Preview({
     if (command) instance.current?.act(command.action);
   }, [command]);
 
-  return <div className="scene-host" data-tool={tool} ref={host}>
+  return <div className="scene-host" data-tool={tool} data-drop-over={dropOver} data-placing={!!onPlaceCeiling} ref={host}
+    onDragOver={event => {
+      const types = event.dataTransfer.types;
+      if (error || !((onDropFixture && types.includes(FIXTURE_DRAG_TYPE)) ||
+        (isCeilingView(view) && onDropCeilingDecor && types.includes(CEILING_DECOR_DRAG_TYPE)) ||
+        (onDropInterior && types.includes(INTERIOR_DRAG_TYPE)))) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+      setDropOver(true);
+    }}
+    onDragLeave={event => {
+      if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setDropOver(false);
+    }}
+    onDrop={event => {
+      setDropOver(false);
+      if (error) return;
+      const fixture = event.dataTransfer.getData(FIXTURE_DRAG_TYPE);
+      const lightKind = LIGHTS.find(item => item === fixture);
+      const decor = event.dataTransfer.getData(CEILING_DECOR_DRAG_TYPE);
+      const decorKind = CEILING_DECOR.find(item => item === decor);
+      if (lightKind && onDropFixture) {
+        event.preventDefault();
+        onDropFixture(lightKind, instance.current?.dropFixture(lightKind, event.clientX, event.clientY));
+      } else if (decorKind && onDropCeilingDecor) {
+        event.preventDefault();
+        onDropCeilingDecor(decorKind, instance.current?.dropCeilingDecor(event.clientX, event.clientY));
+      } else if (onDropInterior) {
+        const item = event.dataTransfer.getData(INTERIOR_DRAG_TYPE);
+        const furnitureKind = FURNITURE.find(kind => kind === item);
+        if (!furnitureKind) return;
+        event.preventDefault();
+        onDropInterior(furnitureKind, instance.current?.dropInterior(event.clientX, event.clientY));
+      }
+    }}>
     {error && <div className="scene-error" role="status">
       <Box size={28} />
       <strong>3D preview unavailable</strong>
@@ -58,9 +101,12 @@ export function Preview({
   </div>;
 }
 
-export function ViewSwitch({ view, onChange }: { view: View; onChange: (view: View) => void }) {
-  return <Segmented label="Camera view" value={view} values={['3D', 'Top']} onChange={onChange}
-    render={value => value === '3D' ? <><Box size={15} /> 3D view</> : <><Scan size={15} /> Top view</>} />;
+export function ViewSwitch({ view, onChange, allowCeiling = true }: { view: View; onChange: (view: View) => void; allowCeiling?: boolean }) {
+  return <Segmented label="Camera view" value={view} values={allowCeiling ? ['3D', 'Top', 'Ceiling', 'Ceiling Outside', 'Interior'] : ['3D', 'Top']} onChange={onChange}
+    render={value => {
+      const Icon = value === '3D' ? Box : value === 'Top' ? Scan : value === 'Ceiling' ? LampCeiling : value === 'Interior' ? Armchair : Orbit;
+      return <><Icon size={15} /><span>{value}<span className="sr-only"> view</span></span></>;
+    }} />;
 }
 
 export function SceneToolbar({ tool, onTool, onCamera }: {

@@ -45,15 +45,19 @@ Open [the editor](http://localhost:3000) or check [API health](http://127.0.0.1:
 
 ## Using the editor
 
-- Add a room from a preset or enter its dimensions in meters. Switch rooms in the sidebar and use **Dimensions** to rename or resize the active room.
+- Add a room from a preset or enter its dimensions. Open **Dimensions** to set length, width, height, and the length and thickness of each wall. Choose meters, centimeters, feet, or inches. The live plan shows floor area, perimeter, and wall area with and without openings. Click a wall's dimension label to edit its length.
+- Choose **Draw room** to place vertices on the 2D canvas. Click the first vertex or **Close room** to finish the outline. The shape preset menu includes rectangular, L-shaped, U-shaped, and polygonal rooms. Use **Floor plan** to reopen a room, drag its vertices, split a wall, or edit a wall's length and angle. Grid and angle snapping, zoom, and pan are available in the canvas toolbar.
 - Click a wall in the scene or choose **Selected surface**. Pick a palette chip, search a name, or enter a HEX value. Change the finish and use **Paint all walls** to apply the selection throughout the room.
 - Drag empty space to orbit, scroll or pinch to zoom, and use the camera buttons or **Top view** to reframe. Use the hand tool to drag furniture, fixtures, or openings in the scene. The inspector provides precise placement, sizing, orientation, and removal.
-- Change daylight below the scene. Add a fixture under **Lighting** to adjust brightness, warmth, direction, and tilt.
+- Browse the **Furniture** catalog by room category or search. Drag pieces into the preview or click to add them. The inspector controls size, rotation, finish color, and duplication. TV and desktop PC screens cast adjustable light, and desktop PC setups support one to three monitors.
+- Change daylight below the scene. Under **Lighting**, drag a fixture from the catalog onto the preview or select it to add it at a default position. Drop wall sconces directly onto a wall in **3D view**. Use **Mount** to switch between the surfaces the selected fixture supports.
+- Drag a placed fixture along its mount. The inspector lets you enter an exact position and intensity in lumens, switch power, and adjust warmth. Directional fixtures also offer direction and tilt controls. **Top view** makes positioning ceiling fixtures and floor lamps easier.
+- Open **Ceiling view** to inspect the ceiling from below and place or drag ceiling-mounted fixtures. **3D view** shows the ceiling edges with the room cut away for editing.
 - Open **Compare paint options** to capture the current wall colors and finishes, compare against a saved option under matching lighting, or apply the option.
 - Select **Save project** to save in this browser. Create an account or sign in from the account button and save again to store the project in PostgreSQL. Use **Projects** to reopen, rename, copy, or delete saved projects. The last saved project opens again on refresh when its storage is accessible.
 - Use the toolbar to undo or redo edits, or press Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z.
 
-Screen settings and real-world lighting affect perceived paint color. The study uses approximate daylight and material roughness. Rooms have rectangular footprints and are edited individually within a house project. Furniture can overlap intentionally, such as a table on a rug.
+Screen settings and real-world lighting affect perceived paint color. The study uses approximate daylight and material roughness. Rooms can have rectangular or custom polygon footprints and are edited individually within a house project. Furniture can overlap intentionally, such as a table on a rug.
 
 ## Project structure
 
@@ -100,6 +104,7 @@ Projects store validated room records in a PostgreSQL JSONB column. A save updat
 
 ```bash
 npm run typecheck
+npm test
 npm run build
 docker compose --env-file .env.example config
 git switch -c feature/your-change

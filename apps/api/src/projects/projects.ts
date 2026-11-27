@@ -1,12 +1,15 @@
+import { layoutError, connectionError } from '../../../../packages/studio/house';
 import {
   BadRequestException, Body, ConflictException, Controller, Delete, Get, HttpCode, Injectable, Module,
   NotFoundException, Param, ParseUUIDPipe, Post, Put, Req, UseGuards,
 } from '@nestjs/common';
 import { InjectRepository, TypeOrmModule } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { fitLight, furnitureBounds, furnitureFitsRoom, openingFits, type Project, type SavedProject } from '../../../../packages/studio/model';
+import { dimensionError, fitCeilingDecor, fitLight, fixtureMounts, furniturePlacementFits, hasCabinetDoors, hasDisplay, openingFits,
+  roomWallIds, type Project, type SavedProject } from '../../../../packages/studio/model';
 import { AuthModule, SessionGuard, type AuthRequest } from '../auth/auth';
 import { ProjectEntity } from '../database/entities';
+import { wallDesignsError } from '../../../../packages/studio/wall-design';
 import { CreateProjectDto, UpdateProjectDto } from './project.dto';
 
 function assertUnique(items: { id: string }[], label: string) {
@@ -15,18 +18,49 @@ function assertUnique(items: { id: string }[], label: string) {
 
 function checkLayout(project: Project) {
   assertUnique(project.rooms, 'rooms');
+  const collision = layoutError(project.rooms.filter(room => room.placement)) ?? connectionError(project.rooms);
+  if (collision) throw new BadRequestException(collision);
   for (const room of project.rooms) {
+    const invalidDimensions = dimensionError(room.dimensions);
+    if (invalidDimensions) throw new BadRequestException(`${room.name}. ${invalidDimensions}`);
+    const invalidDesign = wallDesignsError(room);
+    if (invalidDesign) throw new BadRequestException(`${room.name}. ${invalidDesign}`);
+    const ids = roomWallIds(room.dimensions);
+    for (const { walls } of [room, ...room.options]) {
+      if (Object.keys(walls).length !== ids.length || ids.some(id => !Object.hasOwn(walls, id))) {
+        throw new BadRequestException(`Paint entries must match the walls in ${room.name}.`);
+      }
+    }
     for (const kind of ['openings', 'furniture', 'lights', 'options'] as const) assertUnique(room[kind], `${room.name} ${kind}`);
+    const decor = room.ceilingDecor ?? [];
+    assertUnique(decor, `${room.name} ceiling decor`);
+    for (const item of decor) {
+      const fitted = fitCeilingDecor(room.dimensions, item);
+      if (Math.hypot(item.x - fitted.x, item.z - fitted.z) > 0.002) {
+        throw new BadRequestException(`Ceiling decor extends outside ${room.name}.`);
+      }
+    }
     if (room.openings.some(opening => !openingFits(room, opening))) {
       throw new BadRequestException(`Openings in ${room.name} overlap or exceed the wall bounds.`);
     }
+    if (room.openings.some(opening => (opening.curtains && opening.kind !== 'Window') || (opening.hinge && opening.kind !== 'Door'))) {
+      throw new BadRequestException(`Invalid door or window settings in ${room.name}.`);
+    }
     for (const item of room.furniture) {
-      const bounds = furnitureBounds(room.dimensions, item);
-      if (!furnitureFitsRoom(room.dimensions, item) || Math.abs(item.x) > bounds.x + 0.002 || Math.abs(item.z) > bounds.z + 0.002) {
+      if (item.doorAngle !== undefined && !hasCabinetDoors(item.kind)) {
+        throw new BadRequestException(`${item.kind} has no cabinet doors.`);
+      }
+      if (item.display && (!hasDisplay(item.kind) || (item.kind === 'TV' && item.display.count !== 1))) {
+        throw new BadRequestException(`Invalid display settings for ${item.kind} in ${room.name}.`);
+      }
+      if (!furniturePlacementFits(room.dimensions, item)) {
         throw new BadRequestException(`Furniture extends outside ${room.name}.`);
       }
     }
     for (const light of room.lights) {
+      if (!fixtureMounts(light.kind, room.dimensions).includes(light.mount ?? 'Free')) {
+        throw new BadRequestException(`${light.kind} has an invalid mount in ${room.name}.`);
+      }
       const fitted = fitLight(room.dimensions, light);
       if (Math.hypot(light.x - fitted.x, light.y - fitted.y, light.z - fitted.z) > 0.002) {
         throw new BadRequestException(`A light is outside ${room.name}.`);

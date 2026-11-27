@@ -2,11 +2,11 @@ services:
   db:
     image: postgres:16
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-room_paint_studio}
-      POSTGRES_USER: ${POSTGRES_USER:-studio}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${DATABASE_NAME:-room_paint_studio}
+      POSTGRES_USER: ${DATABASE_USERNAME:-studio}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${DATABASE_PORT:-5432}:5432"
     volumes:
       - studio_db:/var/lib/postgresql/data
     healthcheck:

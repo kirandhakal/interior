@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import { LIMITS, WALLS, WALL_LABELS, type Room } from '@studio/model';
+import { LIMITS, roomWallIds, wallLabel, type Room } from '@studio/model';
 import { IconButton, Modal, SelectField } from '@/components/ui';
 import { Preview, ViewSwitch } from '../scene/preview';
 import type { View } from '../scene/room-scene';
@@ -31,14 +31,14 @@ export function CompareDialog({ room, onChange, onClose }: {
           <input id="option-name" placeholder="Option name" maxLength={LIMITS.name} value={name} onChange={event => setName(event.currentTarget.value)} />
           <button type="submit" className="button button-primary" disabled={room.options.length >= LIMITS.options}><Plus size={16} /> Capture current paint</button>
         </form>
-        <ViewSwitch view={view} onChange={setView} />
+        <ViewSwitch view={view} onChange={setView} allowCeiling={false} />
       </div>
       <div className="comparison-grid">
         <section>
           <h3>Current paint</h3>
           <div className="comparison-scene"><Preview room={room} view={view} /></div>
-          <div className="comparison-swatches">{WALLS.map(wall => <span key={wall} style={colorStyle(room.walls[wall].color)}
-            title={WALL_LABELS[wall] + ' ' + room.walls[wall].color} />)}</div>
+          <div className="comparison-swatches">{roomWallIds(room.dimensions).map(wall => <span key={wall} style={colorStyle(room.walls[wall].color)}
+            title={wallLabel(room.dimensions, wall) + ' ' + room.walls[wall].color} />)}</div>
         </section>
         <section>
           <div className="comparison-heading">
@@ -55,8 +55,8 @@ export function CompareDialog({ room, onChange, onClose }: {
               <p className="empty-comparison">Capture the current paint, then edit the room to compare it with your saved option.</p>}
           </div>
           {option && <div className="comparison-footer">
-            <div className="comparison-swatches">{WALLS.map(wall => <span key={wall} style={colorStyle(option.walls[wall].color)}
-              title={WALL_LABELS[wall] + ' ' + option.walls[wall].color} />)}</div>
+            <div className="comparison-swatches">{roomWallIds(room.dimensions).map(wall => <span key={wall} style={colorStyle(option.walls[wall].color)}
+              title={wallLabel(room.dimensions, wall) + ' ' + option.walls[wall].color} />)}</div>
             <button type="button" className="button button-secondary" onClick={() => onChange({ ...room, walls: option.walls })}>Apply option</button>
           </div>}
         </section>
