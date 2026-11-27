@@ -30,6 +30,7 @@ export const CURTAIN_LENGTHS = ['Sill', 'Floor'] as const;
 export type Curtains = { color: string; drawn: number; length: typeof CURTAIN_LENGTHS[number] };
 export type Opening = {
   id: string; kind: OpeningKind; wall: Wall; offset: number; sill: number; width: number; height: number;
+  connectionId?: string;
   openAngle?: number; hinge?: typeof HINGE_SIDES[number]; curtains?: Curtains;
 };
 export type DisplaySettings = { enabled: boolean; brightness: number; color: string; count: number };

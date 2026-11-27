@@ -32,7 +32,7 @@ import { isCeilingView, type CameraAction, type Hit, type Tool, type View } from
 import { WallWorkspace } from './wall/workspace';
 import { wallDesignsError } from '@studio/wall-design';
 
-import { arrangeLegacy, layoutError } from '@studio/house';
+import { arrangeLegacy, layoutError, updateHouseRoom } from '@studio/house';
 import { HouseEditor } from './house-editor';
 import { RoomExplorer } from './room-explorer';
 
@@ -188,7 +188,8 @@ export function Editor() {
   const changeRoom = (next: Room, group?: string | Room) => {
     const invalidDesign = wallDesignsError(next);
     if (invalidDesign) { notify(invalidDesign, true); return; }
-    const rooms = project.rooms.map(item => item.id === next.id ? next : item);
+    let rooms: Room[];
+    try { rooms = updateHouseRoom(project.rooms, next); } catch (error) { notify((error as Error).message, true); return; }
     const collision = layoutError(rooms);
     if (collision) { notify(collision, true); return; }
     edit(value => ({ ...value, rooms }), group);
@@ -340,7 +341,8 @@ export function Editor() {
     setTab('Paint');
   };
   const removeRoom = () => {
-    const remaining = project.rooms.filter(item => item.id !== room.id);
+    const removed = new Set(room.openings.map(o => o.connectionId).filter(Boolean));
+    const remaining = project.rooms.filter(item => item.id !== room.id).map(r => ({ ...r, openings: r.openings.map(o => removed.has(o.connectionId) ? { ...o, connectionId: undefined } : o) }));
     edit(value => ({ ...value, rooms: remaining }));
     switchRoom(remaining[0]);
   };
@@ -380,8 +382,8 @@ export function Editor() {
         <section className="room-navigation">
           <div className="side-section-title"><h2>Rooms</h2><span>{project.rooms.length}</span></div>
           <RoomExplorer rooms={project.rooms} active={room.id} onSelect={switchRoom} onChange={changeRoom}
-            onDuplicate={source => { const copy = structuredClone(source); copy.id = crypto.randomUUID(); copy.name = (source.name.slice(0, 73) + ' (copy)'); addRoom(copy); }}
-            onRemove={target => { const remaining = project.rooms.filter(r => r.id !== target.id); edit(p => ({ ...p, rooms: remaining })); if (target.id === room.id) switchRoom(remaining[0]); }} />
+            onDuplicate={source => { const copy = structuredClone(source); copy.id = crypto.randomUUID(); copy.openings = copy.openings.map(({ connectionId, ...opening }) => opening); copy.name = (source.name.slice(0, 73) + ' (copy)'); addRoom(copy); }}
+            onRemove={target => { const removed = new Set(target.openings.map(o => o.connectionId).filter(Boolean)); const remaining = project.rooms.filter(r => r.id !== target.id).map(r => ({ ...r, openings: r.openings.map(o => removed.has(o.connectionId) ? { ...o, connectionId: undefined } : o) })); edit(p => ({ ...p, rooms: remaining })); if (target.id === room.id) switchRoom(remaining[0]); }} />
           <button className="button" onClick={() => setHouseView(true)}>House layout &amp; preview</button>
           <div className="room-create-actions">
             <button type="button" className="button add-room" disabled={project.rooms.length >= LIMITS.rooms} onClick={() => {
@@ -415,8 +417,8 @@ export function Editor() {
       <section className="workspace" aria-label="Room preview">
         <header className="workspace-header">
           <div className="workspace-heading">
-            <p className="overline">ROOM PREVIEW</p>
-            <h1>{room.name}</h1>
+            <p className="overline">{houseView ? 'HOUSE LAYOUT' : 'ROOM PREVIEW'}</p>
+            <h1>{houseView ? project.name : room.name}</h1>
           </div>
           <div className="workspace-actions">
             <button type="button" className="button button-secondary" onClick={() => {
@@ -436,7 +438,7 @@ export function Editor() {
         </header>
         {houseView ? <HouseEditor project={project} active={room} onSelect={switchRoom} onClose={() => setHouseView(false)}
           onCorridor={() => { if (project.rooms.length < LIMITS.rooms) addRoom(newRoom(crypto.randomUUID(), 'Corridor', { length: 4, width: 1.2, height: 2.6 })); }}
-          onChange={rooms => { const error = layoutError(rooms); if (error) notify(error, true); else edit(p => ({ ...p, rooms })); }} /> : <>
+          onChange={rooms => { try { const changed = rooms.filter(r => r !== project.rooms.find(old => old.id === r.id)); const updated = changed.length === 1 ? updateHouseRoom(project.rooms, changed[0]) : rooms; const error = layoutError(updated); if (error) notify(error, true); else edit(p => ({ ...p, rooms: updated })); } catch (error) { notify((error as Error).message, true); } }} /> : <>
         {ceilingView && <CeilingToolbar room={room} item={ceilingItem} placing={placingCeiling} missed={placementMissed} inside={view === 'Interior'}
           onChoose={chooseCeilingItem} onStart={() => startCeilingPlacement(ceilingItem)}
           onFinish={ceilingFinish => changeRoom({ ...room, ceilingFinish })}

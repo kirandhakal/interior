@@ -62,7 +62,7 @@ export type PhysicalWall = { start: PlanPoint; end: PlanPoint; sides: WallSide[]
 export function physicalWalls(rooms: Room[]): PhysicalWall[] {
   const edges = rooms.flatMap(room => roomPlan(room.dimensions).edges.map(e => ({ start: world(room, e.start), end: world(room, e.end), side: { room, wall: e.id } })));
   const segments = new Map<string, PhysicalWall>();
-  const key = (p: PlanPoint) => `${p.x.toFixed(5)},${p.z.toFixed(5)}`;
+  const key = (p: PlanPoint) => `${(Math.round(p.x * 1e5) / 1e5).toFixed(5)},${(Math.round(p.z * 1e5) / 1e5).toFixed(5)}`;
   for (const e of edges) {
     const dx = e.end.x - e.start.x, dz = e.end.z - e.start.z, l2 = dx * dx + dz * dz;
     const ts = [0, 1, ...edges.flatMap(q => [q.start, q.end]).filter(p => pointOnSegment(p, e.start, e.end)).map(p => ((p.x - e.start.x) * dx + (p.z - e.start.z) * dz) / l2)].sort((a,b) => a-b);
@@ -79,14 +79,65 @@ export function connectRooms(segment: PhysicalWall): Room[] {
   if (segment.sides.length !== 2) throw new Error('Select a shared wall.');
   const length = Math.hypot(segment.end.x-segment.start.x, segment.end.z-segment.start.z);
   if (length < 1.15) throw new Error('Shared wall needs at least 1.15 m for a door.');
+  const connectionId = crypto.randomUUID();
   return segment.sides.map(({ room, wall }) => {
     const e = roomPlan(room.dimensions).walls[wall], a = world(room, e.start), b = world(room, e.end);
     const mid = { x: (segment.start.x+segment.end.x)/2, z: (segment.start.z+segment.end.z)/2 };
     const offset = ((mid.x-a.x)*(b.x-a.x)+(mid.z-a.z)*(b.z-a.z))/e.span-e.span/2;
-    const opening = { id: crypto.randomUUID(), kind: 'Door' as const, wall, offset, width: 0.9, height: Math.min(2.05, room.dimensions.height - 0.1), sill: 0 };
+    const opening = { id: crypto.randomUUID(), connectionId, kind: 'Door' as const, wall, offset, width: 0.9, height: Math.min(2.05, room.dimensions.height - 0.1), sill: 0 };
     const next = { ...room, openings: [...room.openings, opening] };
     if (room.openings.length >= LIMITS.openings || !openingFits(room, opening) || wallDesignsError(next)) throw new Error('Door conflicts with existing openings or decorations. Move those items first.');
     return next;
   });
 }
 export const totalArea = (rooms: Room[]) => rooms.reduce((sum, room) => sum + planArea(roomPlan(room.dimensions).inner), 0);
+
+/** Keep a physical doorway consistent when either room-local surface is edited. */
+export function updateHouseRoom(rooms: Room[], next: Room): Room[] {
+  const previous = rooms.find(r => r.id === next.id);
+  let result = rooms.map(r => r.id === next.id ? next : r);
+  for (const old of previous?.openings ?? []) {
+    if (!old.connectionId) continue;
+    const opening = next.openings.find(o => o.id === old.id);
+    result = result.map(other => {
+      if (other.id === next.id) return other;
+      const partner = other.openings.find(o => o.connectionId === old.connectionId);
+      if (!partner) return other;
+      if (!opening) return { ...other, openings: other.openings.filter(o => o.id !== partner.id) };
+      const edge = roomPlan(next.dimensions).walls[opening.wall];
+      const point = world(next, { x: edge.midpoint.x + edge.tangent.x * opening.offset, z: edge.midpoint.z + edge.tangent.z * opening.offset });
+      const target = roomPlan(other.dimensions).walls[partner.wall];
+      const a = world(other, target.start), b = world(other, target.end);
+      if (!pointOnSegment(point, a, b)) throw new Error('This move would disconnect a doorway. Remove the connecting door before moving or rotating this room.');
+      const offset = ((point.x-a.x)*(b.x-a.x)+(point.z-a.z)*(b.z-a.z))/target.span-target.span/2;
+      const mirrored = { ...partner, kind: opening.kind, offset, width: opening.width, height: opening.height, sill: opening.sill, openAngle: opening.openAngle };
+      const updated = { ...other, openings: other.openings.map(o => o.id === partner.id ? mirrored : o) };
+      if (!openingFits(updated, mirrored) || wallDesignsError(updated)) throw new Error('The doorway conflicts with items in the adjacent room. Move those items first.');
+      return updated;
+    });
+  }
+  const error = layoutError(result) ?? connectionError(result);
+  if (error) throw new Error(error);
+  return result;
+}
+
+export function connectionError(rooms: Room[]) {
+  const connections = new Map<string, { room: Room; opening: Room['openings'][number] }[]>();
+  for (const room of rooms) for (const opening of room.openings) if (opening.connectionId) {
+    const entries = connections.get(opening.connectionId) ?? []; entries.push({ room, opening }); connections.set(opening.connectionId, entries);
+  }
+  for (const entries of connections.values()) {
+    if (entries.length !== 2 || entries[0].room.id === entries[1].room.id) return 'A connected door must belong to two adjacent rooms.';
+    const points = entries.map(({room,opening}) => {
+      const e = roomPlan(room.dimensions).walls[opening.wall];
+      return e && world(room, { x:e.midpoint.x+e.tangent.x*opening.offset,z:e.midpoint.z+e.tangent.z*opening.offset });
+    });
+    if (!points[0] || !points[1] || Math.hypot(points[0].x-points[1].x,points[0].z-points[1].z)>1e-5) return 'Connected doorways must align.';
+    const [a,b] = entries.map(e=>e.opening);
+    const shared = physicalWalls(entries.map(e=>e.room)).filter(s=>s.sides.length===2);
+    const edge = roomPlan(entries[0].room.dimensions).walls[a.wall];
+    const ends = [-1,1].map(sign=>world(entries[0].room,{x:edge.midpoint.x+edge.tangent.x*(a.offset+sign*a.width/2),z:edge.midpoint.z+edge.tangent.z*(a.offset+sign*a.width/2)}));
+    if (!shared.some(s=>s.sides.every(side=>entries.some(e=>e.room.id===side.room.id&&e.opening.wall===side.wall)) && ends.every(p=>pointOnSegment(p,s.start,s.end)))) return 'Connected doors must fit within a shared wall.';
+    if (a.kind!==b.kind || a.width!==b.width || a.height!==b.height || a.sill!==b.sill) return 'Connected doorway dimensions must match.';
+  }
+}

@@ -37,3 +37,19 @@ test('API accepts and retains placement and visibility, rejects invalid placemen
  assert.deepEqual({...saved.rooms[0].placement},{x:12,z:7,rotation:90});assert.equal(saved.rooms[0].visible,false);
  await assert.rejects(()=>pipe.transform({...value,rooms:[{...room('a'),placement:{x:Infinity,z:0,rotation:0}}]},{type:'body',metatype:CreateProjectDto}));
 });
+const {updateHouseRoom,connectionError}=require('../packages/studio/house.ts');
+test('connected doorway edits and deletion synchronize atomically',()=>{
+ const connected=connectRooms(physicalWalls([room('a'),room('b',4)]).find(s=>s.sides.length===2));
+ assert.equal(connectionError(connected),undefined);
+ const changed={...connected[0],openings:connected[0].openings.map(o=>({...o,width:1,offset:o.offset+.1,openAngle:45}))};
+ const updated=updateHouseRoom(connected,changed);
+ assert.equal(updated[1].openings[0].width,1);assert.equal(updated[1].openings[0].openAngle,45);
+ assert.equal(connectionError(updated),undefined);assert.equal(connected[1].openings[0].width,.9);
+ const removed=updateHouseRoom(updated,{...updated[0],openings:[]});assert.equal(removed[1].openings.length,0);
+});
+test('connected room moves and adjacent decoration conflicts are rejected',()=>{
+ const connected=connectRooms(physicalWalls([room('a'),room('b',4)]).find(s=>s.sides.length===2));
+ assert.throws(()=>updateHouseRoom(connected,{...connected[0],placement:{x:-1,z:0,rotation:0}}),/disconnect/);
+ const invalid={...connected[0],openings:connected[0].openings.map(o=>({...o,width:8}))};
+ assert.throws(()=>updateHouseRoom(connected,invalid),/conflicts/);
+});

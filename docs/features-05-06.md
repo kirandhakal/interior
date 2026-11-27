@@ -6,7 +6,7 @@ The existing project model already stored a room collection, and the editor alre
 
 Room now has optional `placement: { x, z, rotation }` (metres and degrees) and `visible`. Missing visibility means visible. On loading legacy projects, missing placements are assigned without changing dimensions, finishes, or contents. No database migration is needed because rooms are stored as JSON. API DTOs validate and preserve these fields. API project validation rejects overlapping explicitly positioned rooms and already rejects duplicate room IDs.
 
-- `packages/studio/house.ts`: world transforms, polygon collision checks, legacy arrangement, wall snapping, split/deduplicated physical walls, paired doors, and polygon floor area.
+- `packages/studio/house.ts`: world transforms, polygon collision checks, legacy arrangement, wall snapping, split/deduplicated physical walls, paired doors, synchronized connection edits and deletion, connection validation, and polygon floor area.
 - `apps/web/src/editor/room-explorer.tsx`: selection, properties, rename, deep copy, confirmed delete, visibility.
 - `apps/web/src/editor/house-editor.tsx`: global floor plan, pointer dragging, position and rotation inputs, corridor creation, adjacent-room connection, dimensions and area.
 - `apps/web/src/editor/house-preview.tsx`: orbitable house preview with one physical mesh per wall segment, separate facing paints, opening cutouts, floors and furniture.
@@ -20,8 +20,10 @@ Implemented: global dragging, rotation, wall snapping, partial shared wall detec
 
 ## Limits
 
-House preview is a cutaway architectural overview: detailed wall decorations, lights, ceiling treatments and window/door models use the existing individual-room renderer. Shared boundaries use a fixed 0.12 m visual thickness in this overview. Individual room wall thicknesses remain preserved. Connections create paired room-local doors atomically and reject conflicts with existing openings/designs; subsequent individual door edits and room moves do not keep paired doors linked. Snapping aligns parallel walls; it does not automatically rotate rooms. Rename and delete use browser-native prompt/confirmation dialogs.
+House preview is a cutaway architectural overview with floors, furniture, fixtures, ceiling decorations, interior wall decorations, and painted wall geometry. Door/window openings are cut out; detailed frames, glazing and animated door leaves remain in the individual room renderer. Wall thickness follows the maximum thickness of the adjoining room surfaces. Ceiling slabs are omitted so interiors remain visible.
+
+Connections have persisted IDs. Editing or deleting either connected opening updates its partner atomically. Moves that disconnect a doorway are rejected with instructions to remove the connecting door first. Duplicate rooms clear connection IDs; removing a room leaves its neighbour's doorway as an independent opening. Snapping aligns parallel walls; it does not automatically rotate rooms. Rename and delete use browser-native prompt/confirmation dialogs.
 
 ## Verification
 
-`npm test` passes all five test files, including six new house tests. `npm run typecheck` passes both workspaces. Production API/web build passes. No lint script is configured. Browser interaction was not independently automated for these additions.
+`npm test` passes all five test files, including eight new house tests. `npm run typecheck` passes both workspaces. Production API/web build passes. No lint script is configured. A headless Chrome check passed for house navigation, creating paired doors, saving both connection IDs, and opening the 3D house preview without page errors (`tests/browser/house-assembly.cjs`).

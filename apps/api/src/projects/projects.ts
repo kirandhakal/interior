@@ -1,4 +1,4 @@
-import { layoutError } from '../../../../packages/studio/house';
+import { layoutError, connectionError } from '../../../../packages/studio/house';
 import {
   BadRequestException, Body, ConflictException, Controller, Delete, Get, HttpCode, Injectable, Module,
   NotFoundException, Param, ParseUUIDPipe, Post, Put, Req, UseGuards,
@@ -18,7 +18,7 @@ function assertUnique(items: { id: string }[], label: string) {
 
 function checkLayout(project: Project) {
   assertUnique(project.rooms, 'rooms');
-  const collision = layoutError(project.rooms.filter(room => room.placement));
+  const collision = layoutError(project.rooms.filter(room => room.placement)) ?? connectionError(project.rooms);
   if (collision) throw new BadRequestException(collision);
   for (const room of project.rooms) {
     const invalidDimensions = dimensionError(room.dimensions);

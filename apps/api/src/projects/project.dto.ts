@@ -66,6 +66,7 @@ class CurtainsDto implements Curtains {
 }
 
 class OpeningDto {
+  @optional() @Matches(idPattern) connectionId?: string;
   @Matches(idPattern) id!: string;
   @IsIn(OPENINGS) kind!: OpeningKind;
   @Matches(WALL_ID_PATTERN) wall!: Wall;
