@@ -48,7 +48,7 @@ export function HousePreview({ rooms }: { rooms: Room[] }) {
       }
       scene.add(group);
     }
-    for (const r of visible) scene.add(new Mesh(planFace(footprint(r), 0), new MeshStandardMaterial({ color: '#b9a387', side: DoubleSide })));
+    for (const r of visible) scene.add(new Mesh(planFace(footprint(r), 0), new MeshStandardMaterial({ color: r.floorColor ?? '#b9a387', roughness: r.floorMaterial === 'Tile' ? .25 : r.floorMaterial === 'Concrete' ? .98 : .83, side: DoubleSide })));
     for (const segment of physicalWalls(visible)) {
       const dx = segment.end.x-segment.start.x, dz = segment.end.z-segment.start.z, length = Math.hypot(dx,dz);
       const group = new Group(); group.position.set(segment.start.x, 0, segment.start.z); group.rotation.y = -Math.atan2(dz,dx); scene.add(group);

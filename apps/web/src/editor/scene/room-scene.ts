@@ -292,12 +292,12 @@ export class RoomScene {
     this.controls.maxPolarAngle = straightUp ? straightUpPolar : ceilingView ? Math.PI - 0.18 : Math.PI / 2 - 0.055;
     this.ceilingFill.visible = ceilingView;
     this.ceilingFill.intensity = straightUp ? insideCeilingFill[room.daylight] : inside ? insideCeilingFill[room.daylight] * 0.43 : 0.36;
-    if (floorChanged) {
+    if (floorChanged || room.floorColor !== oldRoom?.floorColor || room.floorMaterial !== oldRoom?.floorMaterial) {
       if (this.floor) {
         this.roomGroup.remove(this.floor.group);
         this.floor.dispose();
       }
-      this.floor = createFloor(dimensions, this.assets);
+      this.floor = createFloor(dimensions, this.assets, room);
       this.roomGroup.add(this.floor.group);
     }
     if (resized) {

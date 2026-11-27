@@ -19,7 +19,7 @@ export function disposeGeometry(group: Group) {
   });
 }
 
-export function createFloor(dimensions: Dimensions, assets: SceneAssets) {
+export function createFloor(dimensions: Dimensions, assets: SceneAssets, room?: Room) {
   const { inner, outer, bounds: { length, width } } = roomPlan(dimensions);
   const slabOutline = dimensions.outline ? inner : outer;
   const group = new Group();
@@ -28,7 +28,7 @@ export function createFloor(dimensions: Dimensions, assets: SceneAssets) {
   const edge = new Mesh(planPrism(slabOutline, -0.244, 0.039), assets.edge);
   edge.castShadow = edge.receiveShadow = true;
   const map = floorTexture(length, width);
-  const material = new MeshStandardMaterial({ map, roughness: 0.83 });
+  const material = new MeshStandardMaterial({ map: !room?.floorMaterial || room.floorMaterial === 'Wood' ? map : null, color: room?.floorColor ?? '#ffffff', roughness: room?.floorMaterial === 'Tile' ? .25 : room?.floorMaterial === 'Concrete' ? .98 : .83 });
   const floor = new Mesh(planFace(inner, 0), material);
   floor.receiveShadow = true;
   group.add(slab, edge, floor);
@@ -129,7 +129,7 @@ function createOpening(opening: Opening, a: SceneAssets, roomHeight: number, spa
       for (const edge of [0.012, sashWidth - 0.012]) box(swing.pivot, a.trim, 0.027, sashHeight, 0.046, direction * edge, height / 2, 0);
       box(swing.pivot, a.black, 0.016, 0.083, 0.035, direction * (sashWidth - 0.024), height * 0.48, 0.034, 0.005);
     }
-  } else {
+  } else if (opening.kind === 'Door') {
     const direction = opening.hinge === 'Right' ? -1 : 1;
     const leafWidth = width - 0.055;
     const swing = createSwing(group, -direction * leafWidth / 2, 0.071, direction, leafWidth, a.swingMark);

@@ -45,8 +45,8 @@ export function starterProject(): Project {
 }
 
 export function addOpening(room: Room, kind: OpeningKind, wall: Wall): Opening | undefined {
-  const base = { id: crypto.randomUUID(), kind, wall, width: kind === 'Door' ? 0.9 : 1.2,
-    height: kind === 'Door' ? 2.05 : 1.1, sill: kind === 'Door' ? 0 : 0.85 };
+  const base = { id: crypto.randomUUID(), kind, wall, width: kind !== 'Window' ? 0.9 : 1.2,
+    height: kind !== 'Window' ? 2.05 : 1.1, sill: kind !== 'Window' ? 0 : 0.85 };
   const offsets = [0, -0.55, 0.55, -1.1, 1.1, -1.65, 1.65, -2.2, 2.2, -3, 3, -4, 4, -6, 6, -8, 8];
   return offsets.map(offset => fitOpening(room.dimensions, { ...base, offset }))
     .find(opening => openingFits(room, opening) && !wallDesignsError({ ...room, openings: [...room.openings, opening] }));

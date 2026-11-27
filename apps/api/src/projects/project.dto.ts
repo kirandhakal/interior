@@ -169,6 +169,8 @@ class PlacementDto {
 }
 
 class RoomDto {
+  @optional() @Matches(HEX_COLOR) floorColor?: string;
+  @optional() @IsIn(['Wood', 'Tile', 'Concrete']) floorMaterial?: 'Wood' | 'Tile' | 'Concrete';
   @optional() @IsIn(SPACE_TYPES) spaceType?: SpaceType;
   @optional() @IsBoolean() visible?: boolean;
   @optional() @IsObject() @ValidateNested() @Type(() => PlacementDto) placement?: PlacementDto;

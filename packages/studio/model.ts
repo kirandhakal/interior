@@ -12,7 +12,7 @@ export * from './dimensions';
 
 export const FINISHES = ['Matte', 'Eggshell', 'Satin', 'Gloss'] as const;
 export const DAYLIGHTS = ['Morning', 'Afternoon', 'Evening', 'Night'] as const;
-export const OPENINGS = ['Door', 'Window'] as const;
+export const OPENINGS = ['Door', 'Window', 'Passage'] as const;
 export const CEILING_LIGHTS = ['Chandelier', 'Pendant light', 'Fairy lights'] as const;
 export const LIGHTS = ['Bulb', 'Floor lamp', 'Wall sconce', 'Ceiling light', 'Spotlight', 'LED strip', ...CEILING_LIGHTS] as const;
 export const LIGHT_MOUNTS = ['Ceiling', 'Floor', 'Free', ...WALLS] as const;
@@ -48,6 +48,8 @@ export const SPACE_TYPES = ['Room', 'Corridor', 'Passage', 'Balcony', 'Stairs', 
 export type SpaceType = typeof SPACE_TYPES[number];
 export type Room = {
   spaceType?: SpaceType;
+  floorColor?: string;
+  floorMaterial?: 'Wood' | 'Tile' | 'Concrete';
   id: string;
   name: string;
   visible?: boolean;
@@ -152,7 +154,7 @@ export function openingFits(room: Room, opening: Opening) {
   const edge = wallSpan(room.dimensions, opening.wall) / 2 - OPENING_EDGE_CLEARANCE;
   if (opening.width < 0.4 || Math.abs(opening.offset) + opening.width / 2 > edge + PLACEMENT_TOLERANCE ||
       opening.sill + opening.height > room.dimensions.height - OPENING_EDGE_CLEARANCE + PLACEMENT_TOLERANCE ||
-      (opening.kind === 'Door' && opening.sill !== 0)) return false;
+      (opening.kind !== 'Window' && opening.sill !== 0)) return false;
   return room.openings.every(other => other.id === opening.id || other.wall !== opening.wall ||
     Math.abs(other.offset - opening.offset) >= (other.width + opening.width) / 2 + OPENING_GAP - PLACEMENT_TOLERANCE ||
     !openingsShareHeight(opening, other));
@@ -167,7 +169,7 @@ export function fitOpening(dimensions: Dimensions, opening: Opening): Opening {
   const width = clamp(opening.width, 0.4, span - 2 * OPENING_EDGE_CLEARANCE);
   const height = clamp(opening.height, 0.4, dimensions.height - OPENING_EDGE_CLEARANCE);
   const offsetLimit = (span - width) / 2 - OPENING_EDGE_CLEARANCE;
-  const sill = opening.kind === 'Door' ? 0 : clamp(opening.sill, 0, dimensions.height - height - OPENING_EDGE_CLEARANCE);
+  const sill = opening.kind !== 'Window' ? 0 : clamp(opening.sill, 0, dimensions.height - height - OPENING_EDGE_CLEARANCE);
   return { ...opening, width, height, offset: clamp(opening.offset, -offsetLimit, offsetLimit), sill };
 }
 

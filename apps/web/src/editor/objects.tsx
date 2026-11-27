@@ -88,8 +88,8 @@ export function OpeningControls({ room, wall, selection, onSelect, onChange, not
         <NumberField label="Offset from center" value={active.offset} onChange={offset => update(active, { offset })} />
         {active.kind === 'Window' && <NumberField label="Sill height" min={0} value={active.sill} onChange={sill => update(active, { sill })} />}
       </div>
-      <RangeField label={`${active.kind} opening angle`} value={active.openAngle ?? 0} min={0} max={90} step={1} unit="°"
-        onChange={openAngle => update(active, { openAngle }, 'opening angle')} />
+      {active.kind !== 'Passage' && <RangeField label={`${active.kind} opening angle`} value={active.openAngle ?? 0} min={0} max={90} step={1} unit="°"
+        onChange={openAngle => update(active, { openAngle }, 'opening angle')} />}
       {active.kind === 'Door' && <SelectField label="Hinge side (from inside)" values={HINGE_SIDES} value={active.hinge ?? 'Left'}
         onChange={hinge => update(active, { hinge })} />}
       {active.kind === 'Window' && <section className="object-details">

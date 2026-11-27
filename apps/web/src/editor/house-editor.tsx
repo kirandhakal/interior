@@ -7,6 +7,7 @@ import { applyRoomOutline } from '@studio/room-outline';
 import { HousePreview } from './house-preview';
 import { FloorPlanEditor } from './floor-plan/editor';
 import { newRoom } from './rooms';
+import { CorridorControls } from './corridor-controls';
 
 const library: { type: SpaceType; icon: LucideIcon; size: [number, number]; color: string; hint: string }[] = [
   { type: 'Room', icon: Armchair, size: [4, 3.5], color: '#dae6f3', hint: 'Living, sleeping or working' },
@@ -37,7 +38,8 @@ export function HouseEditor({ project, active, onSelect, onChange, onClose, onAd
   const [zoom, setZoom] = useState(1);
   const [drag, setDrag] = useState<{ x: number; z: number; start: Room }>();
   const [draft, setDraft] = useState<Room>();
-  const rooms = project.rooms.map(r => draft?.id === r.id ? draft : r);
+  const [proposal, setProposal] = useState<Room[]>();
+  const rooms = (proposal ?? project.rooms).map(r => draft?.id === r.id ? draft : r);
   const b = bounds(project.rooms.flatMap(footprint));
   const w = (b.maxX - b.minX + 14) * zoom, h = (b.maxZ - b.minZ + 14) * zoom;
   const minX = (b.minX + b.maxX - w) / 2, minZ = (b.minZ + b.maxZ - h) / 2;
@@ -96,6 +98,7 @@ export function HouseEditor({ project, active, onSelect, onChange, onClose, onAd
         <details className="house-more"><summary>More ways to start</summary><button className="button button-secondary" onClick={onAddRoom}>Room presets & dimensions</button><button className="button button-secondary" disabled={project.rooms.length > LIMITS.rooms - 5} onClick={onExample}>Add five-room example</button><small>Adds an example alongside your existing layout.</small></details>
       </aside>
       <div className="house-workspace">
+        {proposal && <p role="status" className="house-draw-bar">Corridor preview — apply or reject it in the selected-space panel.</p>}
         <div className="house-toolbar" aria-label="House drawing tools"><div className="house-tool-group">
           <button className="button" aria-pressed={mode === 'select'} onClick={resetTool}><MousePointer2 size={16} /> Select & move</button>
           <button className="button" disabled={preview} aria-pressed={mode === 'draw'} onClick={() => { setMode('draw'); setPoints([]); setError(undefined); }}><PencilRuler size={16} /> Draw a space</button>
@@ -105,17 +108,17 @@ export function HouseEditor({ project, active, onSelect, onChange, onClose, onAd
         {mode !== 'select' && <div className="house-draw-bar">{mode === 'draw' ? <><label>Drawing <select aria-label="Space to draw" value={kind} onChange={e => setKind(e.target.value as SpaceType)}>{SPACE_TYPES.map(type => <option key={type}>{type}</option>)}</select></label><button className="button" disabled={!points.length} onClick={() => setPoints(points.slice(0, -1))}><Undo2 size={15} /> Last point</button><button className="button button-primary" disabled={points.length < 3} onClick={finishDrawing}>Finish space</button></> : <span>Click the plan to place a {kind.toLowerCase()}.</span>}<button className="button" onClick={resetTool}><X size={15} /> Cancel</button></div>}
         {preview ? <HousePreview rooms={rooms} /> : <svg onDragStart={e => e.preventDefault()} onContextMenu={e => e.preventDefault()} className={`house-canvas ${mode !== 'select' ? 'is-drawing' : ''}`} aria-label="Drag rooms in the global floor plan" viewBox={`${minX} ${minZ} ${w} ${h}`}
           onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }} onDrop={e => { e.preventDefault(); const type = e.dataTransfer.getData('application/house-space') as SpaceType; if (SPACE_TYPES.includes(type)) place(type, pointAt(e.currentTarget, e.clientX, e.clientY)); }}
-          onPointerDown={e => { if (e.button !== 0) return; e.preventDefault(); if (mode === 'select') return; const p = pointAt(e.currentTarget, e.clientX, e.clientY); if (mode === 'place') place(kind, p); else { setPoints([...points, p]); setError(undefined); } }}
+          onPointerDown={e => { if (e.button !== 0) return; e.preventDefault(); if (proposal || mode === 'select') return; const p = pointAt(e.currentTarget, e.clientX, e.clientY); if (mode === 'place') place(kind, p); else { setPoints([...points, p]); setError(undefined); } }}
           onPointerMove={e => { if (!drag) return; const p = pointAt(e.currentTarget, e.clientX, e.clientY); const next = { ...drag.start, placement: { ...pose(drag.start), x: pose(drag.start).x + p.x - drag.x, z: pose(drag.start).z + p.z - drag.z } }; setDraft(snap ? snapRoom(next, project.rooms.filter(r => r.id !== next.id)) : next); }}
           onPointerUp={() => { if (draft) update(draft); setDrag(undefined); setDraft(undefined); }} onPointerCancel={() => { setDrag(undefined); setDraft(undefined); }}>
           <defs><pattern id="house-grid" width="1" height="1" patternUnits="userSpaceOnUse"><path d="M 1 0 L 0 0 0 1" fill="none" stroke="#dce3e8" strokeWidth="0.025" /></pattern></defs>
           <rect x={minX} y={minZ} width={w} height={h} fill="url(#house-grid)" />
-          {rooms.filter(r => r.visible !== false).map(r => { const p = footprint(r), box = bounds(p), selected = r.id === active.id; return <g key={r.id} role="button" tabIndex={0} aria-label={`Select ${r.name}`} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(r); } }} onPointerDown={e => { if (mode !== 'select' || e.button !== 0) return; e.preventDefault(); e.stopPropagation(); e.currentTarget.ownerSVGElement!.setPointerCapture(e.pointerId); const p = pointAt(e.currentTarget.ownerSVGElement!, e.clientX, e.clientY); onSelect(r); setError(undefined); setDrag({ ...p, start: r }); }}>
-            <polygon points={p.map(p => `${p.x},${p.z}`).join(' ')} fill={info(r).color} stroke={selected ? '#236b90' : '#7e8d96'} strokeWidth={selected ? .1 : .05} strokeDasharray={isOpenSpace(r) ? '.15 .1' : undefined} />
+          {rooms.filter(r => r.visible !== false).map(r => { const p = footprint(r), box = bounds(p), selected = r.id === active.id; return <g key={r.id} role="button" tabIndex={0} aria-label={`Select ${r.name}`} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(r); } }} onPointerDown={e => { if (proposal || mode !== 'select' || e.button !== 0) return; e.preventDefault(); e.stopPropagation(); e.currentTarget.ownerSVGElement!.setPointerCapture(e.pointerId); const p = pointAt(e.currentTarget.ownerSVGElement!, e.clientX, e.clientY); onSelect(r); setError(undefined); setDrag({ ...p, start: r }); }}>
+            <polygon points={p.map(p => `${p.x},${p.z}`).join(' ')} fill={info(r).color} opacity={proposal && !project.rooms.some(old => old.id === r.id) ? .55 : 1} stroke={selected ? '#236b90' : '#7e8d96'} strokeWidth={selected ? .1 : .05} strokeDasharray={isOpenSpace(r) ? '.15 .1' : undefined} />
             <text x={(box.minX + box.maxX) / 2} y={(box.minZ + box.maxZ) / 2} textAnchor="middle" fontSize="0.4" pointerEvents="none">{r.name}</text>
             <text x={(box.minX + box.maxX) / 2} y={(box.minZ + box.maxZ) / 2 + .44} textAnchor="middle" fontSize="0.27" fill="#4b5963" pointerEvents="none">{totalArea([r]).toFixed(1)} m²{r.spaceType === 'Stairs' ? ' · stairwell' : ''}</text>
           </g>; })}
-          {rooms.filter(r => r.visible !== false).flatMap(r => r.openings.map(o => { const edge = roomPlan(r.dimensions).walls[o.wall]; const a = world(r, { x: edge.midpoint.x + edge.tangent.x * (o.offset - o.width / 2), z: edge.midpoint.z + edge.tangent.z * (o.offset - o.width / 2) }); const b = world(r, { x: edge.midpoint.x + edge.tangent.x * (o.offset + o.width / 2), z: edge.midpoint.z + edge.tangent.z * (o.offset + o.width / 2) }); return <line key={r.id + o.id} x1={a.x} y1={a.z} x2={b.x} y2={b.z} stroke={o.kind === 'Door' ? '#fff' : '#368bb4'} strokeWidth="0.16" pointerEvents="none" />; }))}
+          {rooms.filter(r => r.visible !== false).flatMap(r => r.openings.map(o => { const edge = roomPlan(r.dimensions).walls[o.wall]; const a = world(r, { x: edge.midpoint.x + edge.tangent.x * (o.offset - o.width / 2), z: edge.midpoint.z + edge.tangent.z * (o.offset - o.width / 2) }); const b = world(r, { x: edge.midpoint.x + edge.tangent.x * (o.offset + o.width / 2), z: edge.midpoint.z + edge.tangent.z * (o.offset + o.width / 2) }); return <line key={r.id + o.id} x1={a.x} y1={a.z} x2={b.x} y2={b.z} stroke={o.kind !== 'Window' ? '#fff' : '#368bb4'} strokeWidth="0.16" pointerEvents="none" />; }))}
           {!!points.length && <g pointerEvents="none"><polyline points={points.map(p => `${p.x},${p.z}`).join(' ')} fill="none" stroke="#236b90" strokeWidth=".07" />{points.map((p, i) => <circle key={i} cx={p.x} cy={p.z} r=".1" fill="#236b90" />)}</g>}
         </svg>}
         <div className="house-canvas-footer"><span>{project.rooms.length} spaces · {totalArea(project.rooms).toFixed(1)} m²</span><span>Grid: 1 m · Dimensions in metres</span></div>
@@ -126,6 +129,9 @@ export function HouseEditor({ project, active, onSelect, onChange, onClose, onAd
         <label className="field"><span>Select a space</span><select aria-label="Select a space" value={active.id} onChange={e => onSelect(project.rooms.find(r => r.id === e.target.value)!)}>{project.rooms.map(r => <option key={r.id} value={r.id}>{r.name}{r.visible === false ? ' (hidden)' : ''}</option>)}</select></label>
         <label className="field"><span>Name</span><input key={active.id + active.name} aria-label="Space name" defaultValue={active.name} maxLength={LIMITS.name} onBlur={e => { const name = e.target.value.trim(); if (name && name !== active.name) update({ ...active, name }); }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} /></label>
         <label className="field"><span>Space type</span><select value={active.spaceType ?? 'Room'} onChange={e => update({ ...active, spaceType: e.target.value as SpaceType })}>{SPACE_TYPES.map(type => <option key={type}>{type}</option>)}</select></label>
+        <CorridorControls rooms={project.rooms} onPreview={setProposal} onApply={(next, corridor) => { if (!commit(next)) return false; onSelect(corridor); return true; }} />
+        <button className="button button-secondary" onClick={() => { const copy = structuredClone(active); copy.id = crypto.randomUUID(); copy.name = `${active.name} copy`.slice(0, LIMITS.name); copy.openings = copy.openings.map(({ connectionId, ...o }) => ({ ...o, id: crypto.randomUUID() })); const box = bounds(footprint(active)); copy.placement = { ...pose(active), x: pose(active).x + box.maxX - box.minX + 1 }; add(copy); }}>Duplicate space</button>
+        <details><summary>Floor finish</summary><label className="field"><span>Floor color</span><input aria-label="Floor color" type="color" value={active.floorColor ?? '#b9a387'} onChange={e => update({ ...active, floorColor: e.target.value })} /></label><label className="field"><span>Floor material</span><select aria-label="Floor material" value={active.floorMaterial ?? 'Wood'} onChange={e => update({ ...active, floorMaterial: e.target.value as Room['floorMaterial'] })}>{['Wood','Tile','Concrete'].map(value => <option key={value}>{value}</option>)}</select></label></details>
         <button className="button button-primary" onClick={() => setEditing(true)}><PencilRuler size={16} /> Edit shape & size</button>
         {active.spaceType === 'Stairs' && <p className="house-help">A stairwell reserves floor space. Steps and upper floors are not modeled.</p>}
         {isOpenSpace(active) && <p className="house-help">Dashed edges mark an open area without enclosing walls.</p>}
