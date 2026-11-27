@@ -27,3 +27,11 @@ Connections have persisted IDs. Editing or deleting either connected opening upd
 ## Verification
 
 `npm test` passes all five test files, including eight new house tests. `npm run typecheck` passes both workspaces. Production API/web build passes. No lint script is configured. A headless Chrome check passed for house navigation, creating paired doors, saving both connection IDs, and opening the 3D house preview without page errors (`tests/browser/house-assembly.cjs`).
+
+## Finding and using the house editor
+
+Click **Whole house** in the workspace header or **House layout & preview** in the sidebar. The house editor opens in top view. **Add five-room example** appends the reference arrangement (living room, bedroom, kitchen, hallway, bathroom) with four hallway connections; existing rooms remain intact. The example is 12 × 8 metres with 96 m² floor area.
+
+For a custom layout, add rooms or a corridor, drag parallel walls together until they snap, select a room, and use **Connect to … with door** below the plan. Existing connections are labelled. **Edit selected room** opens its individual design, and **Doors & windows** opens its openings inspector. Switch to **House 3D** to inspect the complete assembly.
+
+The example layout has unit coverage for independent IDs, collision-free placement, area, and all four synchronized doors. The browser check also verifies adding and saving it through the UI.

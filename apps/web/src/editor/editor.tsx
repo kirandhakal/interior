@@ -33,6 +33,8 @@ import { WallWorkspace } from './wall/workspace';
 import { wallDesignsError } from '@studio/wall-design';
 
 import { arrangeLegacy, layoutError, updateHouseRoom } from '@studio/house';
+import { exampleHouse } from '@studio/house-template';
+import { bounds, footprint } from '@studio/house';
 import { HouseEditor } from './house-editor';
 import { RoomExplorer } from './room-explorer';
 
@@ -384,7 +386,7 @@ export function Editor() {
           <RoomExplorer rooms={project.rooms} active={room.id} onSelect={switchRoom} onChange={changeRoom}
             onDuplicate={source => { const copy = structuredClone(source); copy.id = crypto.randomUUID(); copy.openings = copy.openings.map(({ connectionId, ...opening }) => opening); copy.name = (source.name.slice(0, 73) + ' (copy)'); addRoom(copy); }}
             onRemove={target => { const removed = new Set(target.openings.map(o => o.connectionId).filter(Boolean)); const remaining = project.rooms.filter(r => r.id !== target.id).map(r => ({ ...r, openings: r.openings.map(o => removed.has(o.connectionId) ? { ...o, connectionId: undefined } : o) })); edit(p => ({ ...p, rooms: remaining })); if (target.id === room.id) switchRoom(remaining[0]); }} />
-          <button className="button" onClick={() => setHouseView(true)}>House layout &amp; preview</button>
+          <button className="button button-primary house-entry" aria-pressed={houseView} onClick={() => setHouseView(true)}><Scan size={17} /> House layout &amp; preview</button>
           <div className="room-create-actions">
             <button type="button" className="button add-room" disabled={project.rooms.length >= LIMITS.rooms} onClick={() => {
               touched.current = true;
@@ -421,22 +423,31 @@ export function Editor() {
             <h1>{houseView ? project.name : room.name}</h1>
           </div>
           <div className="workspace-actions">
-            <button type="button" className="button button-secondary" onClick={() => {
+            <button className="button button-primary" aria-pressed={houseView} onClick={() => setHouseView(!houseView)}>{houseView ? 'Edit selected room' : 'Whole house'}</button>
+            {!houseView && <><button type="button" className="button button-secondary" onClick={() => {
               setPlacingCeiling(false);
               setDialog('wall');
             }}><Scan size={16} /> Open wall</button>
             <button type="button" className="button button-secondary floor-plan-button" onClick={() => {
               touched.current = true;
               setDialog('plan');
-            }}><Scan size={16} /> Floor plan</button>
+            }}><Scan size={16} /> Floor plan</button></>}
             <div className="undo-tools" role="group" aria-label="Edit history">
               <IconButton label="Undo" disabled={!history.past.length} onClick={() => dispatch({ type: 'undo' })}><Undo2 size={18} /></IconButton>
               <IconButton label="Redo" disabled={!history.future.length} onClick={() => dispatch({ type: 'redo' })}><Redo2 size={18} /></IconButton>
             </div>
-            <ViewSwitch view={view} onChange={changeView} />
+            {!houseView && <ViewSwitch view={view} onChange={changeView} />}
           </div>
         </header>
         {houseView ? <HouseEditor project={project} active={room} onSelect={switchRoom} onClose={() => setHouseView(false)}
+          onAddRoom={() => setDialog('add')} onOpenings={() => { setHouseView(false); setTab('Openings'); }}
+          onExample={() => {
+            if (project.rooms.length > LIMITS.rooms - 5) { notify('Make space for five more rooms before adding the example house.', true); return; }
+            const right = bounds(project.rooms.flatMap(footprint)).maxX + 2;
+            const rooms = exampleHouse().map(r => ({ ...r, placement: { ...r.placement!, x: r.placement!.x + right } }));
+            edit(p => ({ ...p, rooms: [...p.rooms, ...rooms] })); switchRoom(rooms[3]);
+            notify('Added five connected rooms. Your existing rooms are retained alongside the example.');
+          }}
           onCorridor={() => { if (project.rooms.length < LIMITS.rooms) addRoom(newRoom(crypto.randomUUID(), 'Corridor', { length: 4, width: 1.2, height: 2.6 })); }}
           onChange={rooms => { try { const changed = rooms.filter(r => r !== project.rooms.find(old => old.id === r.id)); const updated = changed.length === 1 ? updateHouseRoom(project.rooms, changed[0]) : rooms; const error = layoutError(updated); if (error) notify(error, true); else edit(p => ({ ...p, rooms: updated })); } catch (error) { notify((error as Error).message, true); } }} /> : <>
         {ceilingView && <CeilingToolbar room={room} item={ceilingItem} placing={placingCeiling} missed={placementMissed} inside={view === 'Interior'}

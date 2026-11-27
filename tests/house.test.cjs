@@ -53,3 +53,13 @@ test('connected room moves and adjacent decoration conflicts are rejected',()=>{
  const invalid={...connected[0],openings:connected[0].openings.map(o=>({...o,width:8}))};
  assert.throws(()=>updateHouseRoom(connected,invalid),/conflicts/);
 });
+test('five-room example matches the hallway layout with four connected doors',()=>{
+ const {exampleHouse}=require('../packages/studio/house-template.ts');
+ const rooms=exampleHouse();
+ assert.equal(rooms.length,5);assert.equal(new Set(rooms.map(r=>r.id)).size,5);
+ assert.equal(require('../packages/studio/house.ts').layoutError(rooms),undefined);
+ assert.equal(connectionError(rooms),undefined);assert.equal(totalArea(rooms),96);
+ assert.equal(rooms.find(r=>r.name==='Hallway').openings.length,4);
+ assert.equal(rooms.flatMap(r=>r.openings).length,8);
+ assert.notEqual(exampleHouse()[0].id,rooms[0].id);
+});
