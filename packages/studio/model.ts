@@ -44,7 +44,10 @@ export type Light = {
   mount?: LightMount; lumens?: number; enabled?: boolean;
 };
 export type PaintOption = { id: string; name: string; walls: WallPaint };
+export const SPACE_TYPES = ['Room', 'Corridor', 'Passage', 'Balcony', 'Stairs', 'Bathroom', 'Open space'] as const;
+export type SpaceType = typeof SPACE_TYPES[number];
 export type Room = {
+  spaceType?: SpaceType;
   id: string;
   name: string;
   visible?: boolean;

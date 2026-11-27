@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { AmbientLight, BoxGeometry, Color, DirectionalLight, DoubleSide, Group, Mesh, MeshStandardMaterial, PerspectiveCamera, Scene, WebGLRenderer } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { roomPlan, type Room } from '@studio/model';
-import { bounds, footprint, physicalWalls, world } from '@studio/house';
+import { bounds, footprint, physicalWalls, world, isOpenSpace } from '@studio/house';
 import { createAssets, createFurniture } from './scene/furniture';
 import { pose } from '@studio/house';
 import { createFixture } from './scene/lighting';
@@ -38,7 +38,7 @@ export function HousePreview({ rooms }: { rooms: Room[] }) {
       }
       for (const item of r.lights) { const fixture = createFixture(item, r.dimensions); group.add(fixture.group); disposeObjects.push(fixture.dispose); }
       for (const item of r.ceilingDecor ?? []) { const decor = createCeilingDecor(item.kind); decor.update(item, r.dimensions); group.add(decor.group); disposeObjects.push(decor.dispose); }
-      for (const edge of roomPlan(r.dimensions).edges) {
+      for (const edge of isOpenSpace(r) ? [] : roomPlan(r.dimensions).edges) {
         const design = createWallDesignObjects(r, edge.id);
         // The interior face remains owned by its room, even along shared boundaries.
         if (design.group.children[1]) design.group.remove(design.group.children[1]);

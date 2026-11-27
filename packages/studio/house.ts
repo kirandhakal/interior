@@ -56,11 +56,13 @@ export function snapRoom(room: Room, others: Room[], tolerance = 0.25) {
     }
   } return best;
 }
+export const isOpenSpace = (room: Room) => ['Passage', 'Balcony', 'Open space'].includes(room.spaceType ?? 'Room');
+
 export type WallSide = { room: Room; wall: Wall };
 export type PhysicalWall = { start: PlanPoint; end: PlanPoint; sides: WallSide[] };
 // Split collinear edges at every endpoint; each resulting physical segment has at most two surfaces.
 export function physicalWalls(rooms: Room[]): PhysicalWall[] {
-  const edges = rooms.flatMap(room => roomPlan(room.dimensions).edges.map(e => ({ start: world(room, e.start), end: world(room, e.end), side: { room, wall: e.id } })));
+  const edges = rooms.filter(room => !isOpenSpace(room)).flatMap(room => roomPlan(room.dimensions).edges.map(e => ({ start: world(room, e.start), end: world(room, e.end), side: { room, wall: e.id } })));
   const segments = new Map<string, PhysicalWall>();
   const key = (p: PlanPoint) => `${(Math.round(p.x * 1e5) / 1e5).toFixed(5)},${(Math.round(p.z * 1e5) / 1e5).toFixed(5)}`;
   for (const e of edges) {

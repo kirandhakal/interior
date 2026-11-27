@@ -63,3 +63,22 @@ test('five-room example matches the hallway layout with four connected doors',()
  assert.equal(rooms.flatMap(r=>r.openings).length,8);
  assert.notEqual(exampleHouse()[0].id,rooms[0].id);
 });
+test('open passages and balconies reserve space without enclosing walls',()=>{
+ const {isOpenSpace}=require('../packages/studio/house.ts');
+ for(const spaceType of ['Passage','Balcony','Open space']) {
+  const open={...room('open',4),spaceType};
+  assert.equal(isOpenSpace(open),true);
+  assert.equal(physicalWalls([open]).length,0);
+  assert.equal(totalArea([open]),12);
+  assert.equal(overlaps(room('a'),{...open,placement:{x:1,z:0,rotation:0}}),true);
+  assert.equal(physicalWalls([room('a'),open]).filter(s=>s.sides.length===2).length,0);
+ }
+ assert.equal(physicalWalls([{...room('hall'),spaceType:'Corridor'}]).length,4);
+});
+test('API preserves space categories and rejects unknown categories',async()=>{
+ const pipe=new ValidationPipe({transform:true,whitelist:true,forbidNonWhitelisted:true});
+ const value={id:'83ea1736-c7a5-49e0-a3ea-c46757345ad0',name:'House',rooms:[{...room('a'),spaceType:'Balcony'}]};
+ const saved=await pipe.transform(value,{type:'body',metatype:CreateProjectDto});
+ assert.equal(saved.rooms[0].spaceType,'Balcony');
+ await assert.rejects(()=>pipe.transform({...value,rooms:[{...room('a'),spaceType:'invalid'}]},{type:'body',metatype:CreateProjectDto}));
+});

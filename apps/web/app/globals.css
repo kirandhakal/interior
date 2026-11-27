@@ -687,3 +687,51 @@ details.wall-design-section { display: block; }
 .house-editor > p { margin:14px 0; }
 .house-editor h3 { margin:18px 0 10px; }
 .house-editor .house-actions { margin-bottom:12px; }
+
+/* Whole-house planning: library, drawing board, selected-space inspector. */
+.house-heading { display:flex; justify-content:space-between; align-items:center; gap:20px; margin-bottom:22px; }
+.house-heading h2 { font-size:1.6rem; margin:6px 0; }
+.house-heading p:not(.overline) { color:#536471; font-size:1rem; max-width:650px; }
+.house-workbench { display:grid; grid-template-columns:190px minmax(280px,1fr) 220px; border:1px solid #d8e0e5; border-radius:14px; overflow:hidden; background:#fff; }
+.house-library,.house-inspector { padding:16px; min-width:0; background:#f8fafb; }
+.house-library { border-right:1px solid #d8e0e5; }
+.house-inspector { border-left:1px solid #d8e0e5; }
+.house-editor h3 { margin:0 0 12px; display:flex; align-items:center; gap:8px; font-size:1rem; overflow-wrap:anywhere; }
+.house-library > p,.house-help,.house-more small { font-size:.875rem; line-height:1.6; color:#536471; }
+.house-editor details { margin-top:16px; }
+.house-editor summary { cursor:pointer; font-size:.875rem; font-weight:650; padding:8px 0; }
+.space-tiles { display:grid; gap:6px; }
+.space-tile { display:flex; align-items:center; gap:10px; padding:10px; text-align:left; border:1px solid #dce3e8; border-radius:8px; background:#fff; font-size:.875rem; cursor:grab; }
+.space-tile small { display:block; margin-top:3px; color:#637482; font-size:.75rem; }
+.space-tile:hover,.space-tile.is-active { border-color:#236b90; background:#eaf4fa; }
+.space-tile:disabled { opacity:.5; cursor:default; }
+.house-workspace { min-width:0; }
+.house-toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:10px; border-bottom:1px solid #d8e0e5; }
+.house-tool-group { display:flex; flex-wrap:wrap; gap:4px; }
+.house-toolbar .button { font-size:.875rem; padding:8px; }
+.house-toolbar [aria-pressed=true] { background:#e4f0f7; color:#205d7b; }
+.house-toolbar label { display:flex; align-items:center; gap:6px; font-size:.875rem; }
+.house-toolbar .house-view-menu { margin:0 0 0 auto; position:relative; }
+.house-view-menu > div { position:absolute; top:100%; right:0; z-index:5; background:white; padding:8px; box-shadow:0 8px 24px #20394d26; border-radius:8px; width:145px; }
+.house-view-menu .button { width:100%; }
+.house-canvas { display:block; width:100%; height:520px; touch-action:none; background:#f4f7f9; }
+.house-canvas g[role=button] { cursor:grab; }
+.house-canvas g[role=button]:focus polygon { stroke:#134d72; stroke-width:.14; }
+.house-canvas.is-drawing,.house-canvas.is-drawing g[role=button] { cursor:crosshair; }
+.house-canvas text { fill:#263d4e; }
+.house-canvas-footer { display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; padding:12px; font-size:.8125rem; color:#536471; border-top:1px solid #d8e0e5; }
+.house-workspace > .house-help,.house-workspace > .inline-error { margin:10px 14px 16px; }
+.house-draw-bar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; background:#eaf4fa; padding:10px; font-size:.875rem; }
+.house-draw-bar select { margin-left:6px; padding:6px; }
+.house-inspector .button,.house-more .button { width:100%; margin:6px 0; white-space:normal; font-size:.875rem; }
+.house-inspector .field { margin:12px 0; }
+.house-inspector input,.house-inspector select { width:100%; min-width:0; padding:9px; border:1px solid #ccd7df; border-radius:6px; background:#fff; font-size:.875rem; }
+.house-position { display:grid; gap:10px; font-size:.875rem; }
+.house-position label { display:grid; gap:5px; }
+@media(max-width:1250px) { .house-workbench { grid-template-columns:155px minmax(250px,1fr); } .house-inspector { grid-column:1/-1; border-left:0; border-top:1px solid #d8e0e5; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; align-items:start; } .house-inspector > .overline,.house-inspector > h3 { grid-column:1/-1; } }
+@media(max-width:650px) { .house-editor { padding:12px; } .house-heading { align-items:flex-start; flex-direction:column; } .house-workbench { display:flex; flex-direction:column; } .house-library { border-right:0; border-bottom:1px solid #d8e0e5; } .space-tiles { grid-template-columns:repeat(2,minmax(0,1fr)); } .house-canvas { height:420px; } .house-inspector { grid-template-columns:1fr; } }
+.studio-layout.house-mode { grid-template-columns:228px minmax(0,1fr); }
+.house-mode > .inspector,.house-mode .editor-navigation,.house-mode .dimensions-card { display:none; }
+.house-toolbar input[type=checkbox] { appearance:auto; width:16px; height:16px; min-height:0; padding:0; flex:0 0 16px; accent-color:#236b90; }
+.house-toolbar label { white-space:nowrap; }
+@media(max-width:800px) { .studio-layout.house-mode { grid-template-columns:minmax(0,1fr); } .house-mode .room-navigation { flex-wrap:wrap; min-width:0; } .house-mode .house-entry { width:auto; flex:1 1 100%; } }

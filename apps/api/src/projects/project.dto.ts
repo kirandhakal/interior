@@ -5,7 +5,7 @@ import {
   IsString, IsUUID, Length, Matches, Max, Min, Validate, ValidateIf, ValidateNested, ValidatorConstraint,
 } from 'class-validator';
 import {
-  CEILING_DECOR, CEILING_DECOR_SCALE, CEILING_FINISHES, type CeilingDecorKind, type CeilingFinish,
+  SPACE_TYPES, type SpaceType, CEILING_DECOR, CEILING_DECOR_SCALE, CEILING_FINISHES, type CeilingDecorKind, type CeilingFinish,
   CURTAIN_LENGTHS, DAYLIGHTS, DIMENSION_BOUNDS, FINISHES, FURNITURE, FURNITURE_SCALE, HEX_COLOR, HINGE_SIDES,
   LIGHTS, LIMITS, MAX_LIGHT_LUMENS, MAX_ROOM_COORDINATE, OPENINGS, WALL_ID_PATTERN, WALL_THICKNESS_BOUNDS,
   type Curtains, type Daylight, type FurnitureKind, type LightKind, type LightMount, type Opening, type OpeningKind, type Project, type Wall, type WallPaint,
@@ -169,6 +169,7 @@ class PlacementDto {
 }
 
 class RoomDto {
+  @optional() @IsIn(SPACE_TYPES) spaceType?: SpaceType;
   @optional() @IsBoolean() visible?: boolean;
   @optional() @IsObject() @ValidateNested() @Type(() => PlacementDto) placement?: PlacementDto;
   @Matches(idPattern) id!: string;

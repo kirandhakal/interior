@@ -11,6 +11,7 @@ await page.getByRole('button',{name:'Connect to Bedroom with door'}).click();
 await page.getByRole('button',{name:'Save project',exact:true}).click();
 const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('room-paint-studio.projects.v1'))[0]);
 if(saved.rooms.some(r=>!r.openings[0]?.connectionId))throw Error('Connection missing');
+await page.getByText('More ways to start',{exact:true}).click();
 await page.getByRole('button',{name:'Add five-room example',exact:true}).click();
 await page.getByRole('button',{name:'Save project',exact:true}).click();
 const example=await page.evaluate(()=>JSON.parse(localStorage.getItem('room-paint-studio.projects.v1'))[0]);

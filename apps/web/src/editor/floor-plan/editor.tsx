@@ -20,7 +20,7 @@ export function FloorPlanEditor({ room, unit, focusWall, onUnit, onSave, onRemov
   unit: MeasurementUnit;
   focusWall?: Wall;
   onUnit: (unit: MeasurementUnit) => void;
-  onSave: (room: Room) => void;
+  onSave: (room: Room) => void | boolean;
   onRemove?: () => void;
   onClose: () => void;
 }) {
@@ -51,7 +51,7 @@ export function FloorPlanEditor({ room, unit, focusWall, onUnit, onSave, onRemov
     const base = room ?? newRoom(crypto.randomUUID(), name.trim(), PRESETS[3].dimensions);
     const result = applyRoomOutline(base, name.trim(), height, points);
     if ('error' in result) setError(result.error);
-    else { onSave(result.room); onClose(); }
+    else { if (onSave(result.room) === false) { setError('This shape conflicts with the house layout or a connecting doorway. Adjust the outline and try again.'); return; } onClose(); }
   }
 
   function moveEndpoint(length: number, heading: number) {
